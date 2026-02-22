@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atcoder-tools-mini"
+version = "0.1.0"
+description = "A lightweight CLI tool for AtCoder automatic submission."
+authors = [
+    { name = "Cube", email = "cube@example.com" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    # To be added later if needed (e.g. click, typer, requests)
+]
+
+[project.scripts]
+atm = "atcoder_tools_mini.main:main"
+
+[tool.setuptools.packages.find]
+include = ["atcoder_tools_mini*"]

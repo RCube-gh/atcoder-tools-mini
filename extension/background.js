@@ -1,56 +1,38 @@
-let ws = null;
+// Listen for the special trigger URL to start submission
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+    if (info.status === 'complete' && tab.url && tab.url.includes('local_submit=true')) {
+        console.log('[atcoder-tools-mini] Detected local submit trigger! Fetching payload...');
 
-function connectWebSocket() {
-    // Connect to the local CLI's WebSocket server
-    ws = new WebSocket('ws://localhost:49153');
-
-    ws.onopen = () => {
-        console.log('[atcoder-tools-mini] WebSocket connected!');
-    };
-
-    ws.onmessage = (event) => {
-        console.log('[atcoder-tools-mini] Message received:', event.data);
         try {
-            const data = JSON.parse(event.data);
-            if (data.action === 'submit') {
-                console.log('[atcoder-tools-mini] Submission request received:', data);
-                // Execute fetch logic
-                submitToAtCoder(data).catch(err => {
-                    console.error('[atcoder-tools-mini] Error during submission:', err);
-                });
+            // Fetch payload from the local CLI REST server
+            const response = await fetch('http://localhost:49153/submit_data');
+            if (!response.ok) {
+                console.error('[atcoder-tools-mini] Failed to fetch data from CLI server.');
+                return;
             }
-        } catch (e) {
-            console.error('[atcoder-tools-mini] Error parsing message:', e);
+            const data = await response.json();
+
+            // Clean up the URL to hide the trigger
+            const contestId = data.contest_id;
+            const submitUrl = `https://atcoder.jp/contests/${contestId}/submit`;
+            await chrome.tabs.update(tabId, { url: submitUrl });
+
+            // Begin the submission sequence
+            submitToAtCoder(data, tabId).catch(err => {
+                console.error('[atcoder-tools-mini] Error during submission:', err);
+            });
+
+        } catch (err) {
+            console.error('[atcoder-tools-mini] Could not connect to CLI server:', err);
         }
-    };
-
-    ws.onclose = () => {
-        console.log('[atcoder-tools-mini] WebSocket disconnected. Reconnecting in 5 seconds...');
-        setTimeout(connectWebSocket, 5000);
-    };
-
-    ws.onerror = (error) => {
-        console.error('[atcoder-tools-mini] WebSocket error:', error);
-        ws.close();
-    };
-}
-
-async function submitToAtCoder(data) {
-    const contestId = data.contest_id;
-    if (!contestId) {
-        throw new Error('contest_id is missing from the request data.');
     }
+});
 
-    const submitUrl = `https://atcoder.jp/contests/${contestId}/submit`;
-    console.log(`[atcoder-tools-mini] Opening tab for ${submitUrl}`);
-
-    // Create a new tab in the background (active: false means it won't steal focus!)
-    const tab = await chrome.tabs.create({ url: submitUrl, active: false });
-
-    // Wait for the tab to fully load
+async function submitToAtCoder(data, tabId) {
+    // Wait for the new submitUrl background tab to fully load
     await new Promise((resolve) => {
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-            if (tabId === tab.id && info.status === 'complete') {
+        chrome.tabs.onUpdated.addListener(function listener(tId, info) {
+            if (tId === tabId && info.status === 'complete') {
                 chrome.tabs.onUpdated.removeListener(listener);
                 // add a small delay to ensure DOM and CodeMirror are fully ready
                 setTimeout(resolve, 500);
@@ -60,16 +42,24 @@ async function submitToAtCoder(data) {
 
     // Instead of relying on comfortable-atcoder, WE will monitor the submission!
     // This keeps the tool standalone but still gives the user the feedback they want.
-    chrome.tabs.onUpdated.addListener(function closeListener(tabId, info, tabObj) {
-        if (tabId === tab.id && info.status === 'complete' && tabObj.url && tabObj.url.includes('/submissions/me')) {
+    chrome.tabs.onUpdated.addListener(function closeListener(tId, info, tabObj) {
+        if (tId === tabId && info.status === 'complete' && tabObj.url && tabObj.url.includes('/submissions/me')) {
             console.log('[atcoder-tools-mini] Redirected to submissions page. Starting built-in monitor...');
             chrome.tabs.onUpdated.removeListener(closeListener);
+
+            // Signal the CLI to exit immediately since the submission is complete!
+            // We ignore errors here because the Python CLI immediately kills itself upon receiving this, disconnecting the socket.
+            fetch('http://localhost:49153/submit_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'submitted' })
+            }).catch(() => { });
 
             // Inject a script to pull the latest submission status
             const monitorInterval = setInterval(async () => {
                 try {
                     const results = await chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
+                        target: { tabId: tabId },
                         world: 'MAIN',
                         func: () => {
                             // Find the top row of the submissions table (most recent)
@@ -99,14 +89,6 @@ async function submitToAtCoder(data) {
                     if (results && results[0] && results[0].result) {
                         const res = results[0].result;
                         console.log('[atcoder-tools-mini] Monitor status:', res);
-
-                        // Send updates back to the CLI via WebSocket!
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                action: 'judge_status',
-                                data: res
-                            }));
-                        }
 
                         if (res.state === 'DONE') {
                             console.log('[atcoder-tools-mini] Judgement complete. Showing notification and closing tab.');
@@ -145,7 +127,7 @@ async function submitToAtCoder(data) {
                                             {
                                                 type: 'basic',
                                                 iconUrl: iconUrl,
-                                                title: `AtCoder: ${submitData.task_screen_name}`,
+                                                title: `AtCoder: ${data.task_screen_name}`,
                                                 message: `Result: ${res.status}\nScore: ${res.score}\nTime: ${res.time}`,
                                                 requireInteraction: true
                                             },
@@ -182,11 +164,11 @@ async function submitToAtCoder(data) {
         }
     });
 
-    console.log(`[atcoder-tools-mini] Injecting submission script into tab ${tab.id}`);
+    console.log(`[atcoder-tools-mini] Injecting submission script into tab ${tabId}`);
 
     // Inject content script into the page context
     await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
+        target: { tabId: tabId },
         world: 'MAIN',
         func: (submitData) => {
             console.log('[atcoder-tools-mini] Interacting with DOM...', submitData);
@@ -299,5 +281,3 @@ async function submitToAtCoder(data) {
 
     console.log('[atcoder-tools-mini] Tab operation completed!');
 }
-// Start connection loop
-connectWebSocket();

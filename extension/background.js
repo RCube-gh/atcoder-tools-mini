@@ -1,38 +1,44 @@
-// Listen for the special trigger URL to start submission
-chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
-    if (info.status === 'complete' && tab.url && tab.url.includes('local_submit=true')) {
-        console.log('[atcoder-tools-mini] Detected local submit trigger! Fetching payload...');
+let port = null;
 
-        try {
-            // Fetch payload from the local CLI REST server
-            const response = await fetch('http://localhost:49153/submit_data');
-            if (!response.ok) {
-                console.error('[atcoder-tools-mini] Failed to fetch data from CLI server.');
-                return;
-            }
-            const data = await response.json();
+function connectNative() {
+    port = chrome.runtime.connectNative('com.atcoder_tools_mini');
 
-            // Clean up the URL to hide the trigger
-            const contestId = data.contest_id;
-            const submitUrl = `https://atcoder.jp/contests/${contestId}/submit`;
-            await chrome.tabs.update(tabId, { url: submitUrl });
-
-            // Begin the submission sequence
-            submitToAtCoder(data, tabId).catch(err => {
+    port.onMessage.addListener((msg) => {
+        console.log('[atcoder-tools-mini] Native message received:', msg);
+        if (msg.action === 'submit') {
+            console.log('[atcoder-tools-mini] Submission request received:', msg);
+            // Execute logic silently in the background!
+            submitToAtCoder(msg).catch(err => {
                 console.error('[atcoder-tools-mini] Error during submission:', err);
             });
-
-        } catch (err) {
-            console.error('[atcoder-tools-mini] Could not connect to CLI server:', err);
         }
-    }
-});
+    });
 
-async function submitToAtCoder(data, tabId) {
-    // Wait for the new submitUrl background tab to fully load
+    port.onDisconnect.addListener(() => {
+        console.log('[atcoder-tools-mini] Native host disconnected. Reconnecting in 2 seconds...', chrome.runtime.lastError);
+        setTimeout(connectNative, 2000);
+    });
+}
+
+// Initial Native Messaging connection attempt
+connectNative();
+
+async function submitToAtCoder(data) {
+    const contestId = data.contest_id;
+    if (!contestId) {
+        throw new Error('contest_id is missing from the request data.');
+    }
+
+    const submitUrl = `https://atcoder.jp/contests/${contestId}/submit`;
+    console.log(`[atcoder-tools-mini] Opening tab for ${submitUrl}`);
+
+    // Create a new tab in the background (active: false means it won't steal focus!)
+    const tab = await chrome.tabs.create({ url: submitUrl, active: false });
+
+    // Wait for the new submitUrl tab to fully load
     await new Promise((resolve) => {
         chrome.tabs.onUpdated.addListener(function listener(tId, info) {
-            if (tId === tabId && info.status === 'complete') {
+            if (tId === tab.id && info.status === 'complete') {
                 chrome.tabs.onUpdated.removeListener(listener);
                 // add a small delay to ensure DOM and CodeMirror are fully ready
                 setTimeout(resolve, 500);
@@ -40,60 +46,64 @@ async function submitToAtCoder(data, tabId) {
         });
     });
 
-    // Instead of relying on comfortable-atcoder, WE will monitor the submission!
-    // This keeps the tool standalone but still gives the user the feedback they want.
+    // Instead of relying on comfortable-atcoder, WE will monitor the submission
     chrome.tabs.onUpdated.addListener(function closeListener(tId, info, tabObj) {
-        if (tId === tabId && info.status === 'complete' && tabObj.url && tabObj.url.includes('/submissions/me')) {
+        if (tId === tab.id && info.status === 'complete' && tabObj.url && tabObj.url.includes('/submissions/me')) {
             console.log('[atcoder-tools-mini] Redirected to submissions page. Starting built-in monitor...');
             chrome.tabs.onUpdated.removeListener(closeListener);
 
             // Signal the CLI to exit immediately since the submission is complete!
-            // We ignore errors here because the Python CLI immediately kills itself upon receiving this, disconnecting the socket.
-            fetch('http://localhost:49153/submit_status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'submitted' })
-            }).catch(() => { });
+            if (port) {
+                port.postMessage({ status: 'submitted' });
+            }
 
-            // Inject a script to pull the latest submission status
+            // Fetch directly from Service Worker to avoid background tab throttling
             const monitorInterval = setInterval(async () => {
                 try {
-                    const results = await chrome.scripting.executeScript({
-                        target: { tabId: tabId },
-                        world: 'MAIN',
-                        func: () => {
-                            // Find the top row of the submissions table (most recent)
-                            const firstRow = document.querySelector('table tbody tr');
-                            if (!firstRow) return { state: 'WAITING' };
+                    const response = await fetch(`https://atcoder.jp/contests/${contestId}/submissions/me`, { cache: 'no-store' });
+                    if (!response.ok) return;
+                    const html = await response.text();
 
-                            const statusSpan = firstRow.querySelector('.label');
-                            if (!statusSpan) return { state: 'WAITING' };
+                    const tbodyMatch = html.match(/<tbody>(.*?)<\/tbody>/is);
+                    if (!tbodyMatch) return;
 
-                            const statusText = statusSpan.textContent.trim();
-                            const isWJ = statusText.includes('WJ') || statusText.includes('Judging') || statusText === '1/1' || statusText.includes('/');
+                    const firstRowMatch = tbodyMatch[1].match(/<tr>(.*?)<\/tr>/is);
+                    if (!firstRowMatch) return;
 
-                            const detailLink = firstRow.querySelector('td.text-right a');
-                            const detailHref = detailLink ? detailLink.href : '';
+                    const rowHtml = firstRowMatch[1];
+                    const tdsMatch = [...rowHtml.matchAll(/<td[^>]*>(.*?)<\/td>/gis)];
+                    if (tdsMatch.length < 7) return;
 
-                            return {
-                                state: isWJ ? 'JUDGING' : 'DONE',
-                                status: statusText,
-                                // Also grab score/time if available
-                                score: firstRow.cells[4] ? firstRow.cells[4].textContent.trim() : '',
-                                time: firstRow.cells[7] ? firstRow.cells[7].textContent.trim() : '',
-                                href: detailHref
-                            };
-                        }
-                    });
+                    const score = tdsMatch[4][1].replace(/<[^>]+>/g, '').trim();
+                    const statusText = tdsMatch[6][1].replace(/<[^>]+>/g, '').trim();
+                    const isWJ = statusText.includes('WJ') || statusText.includes('Judging') || statusText === '1/1' || statusText.includes('/');
+                    const time = tdsMatch.length > 7 ? tdsMatch[7][1].replace(/<[^>]+>/g, '').trim() : '';
 
-                    if (results && results[0] && results[0].result) {
-                        const res = results[0].result;
+                    const detailHrefMatch = rowHtml.match(/href="(\/contests\/[^/]+\/submissions\/\d+)"/);
+                    const href = detailHrefMatch ? `https://atcoder.jp${detailHrefMatch[1]}` : '';
+
+                    const res = {
+                        state: isWJ ? 'JUDGING' : 'DONE',
+                        status: statusText,
+                        score: score,
+                        time: time,
+                        href: href
+                    };
+
+                    if (res) {
                         console.log('[atcoder-tools-mini] Monitor status:', res);
+
+                        if (port) {
+                            port.postMessage({
+                                action: 'judge_status',
+                                data: res
+                            });
+                        }
 
                         if (res.state === 'DONE') {
                             console.log('[atcoder-tools-mini] Judgement complete. Showing notification and closing tab.');
                             clearInterval(monitorInterval);
-                            chrome.tabs.remove(tabId);
+                            chrome.tabs.remove(tab.id);
 
                             // --- comfortable-atcoder style notification ---
                             (async () => {
@@ -113,7 +123,7 @@ async function submitToAtCoder(data, tabId) {
                                     const ctx = canvas.getContext('2d');
                                     ctx.fillStyle = backColor;
                                     ctx.fillRect(0, 0, width, height);
-                                    ctx.font = "bold 60px 'Lato','Helvetica Neue',arial,sans-serif";
+                                    ctx.font = "80px 'Lato','Helvetica Neue',arial,sans-serif";
                                     ctx.fillStyle = foreColor;
                                     ctx.textAlign = 'center';
                                     ctx.textBaseline = 'middle';
@@ -164,11 +174,11 @@ async function submitToAtCoder(data, tabId) {
         }
     });
 
-    console.log(`[atcoder-tools-mini] Injecting submission script into tab ${tabId}`);
+    console.log(`[atcoder-tools-mini] Injecting submission script into tab ${tab.id}`);
 
     // Inject content script into the page context
     await chrome.scripting.executeScript({
-        target: { tabId: tabId },
+        target: { tabId: tab.id },
         world: 'MAIN',
         func: (submitData) => {
             console.log('[atcoder-tools-mini] Interacting with DOM...', submitData);

@@ -6,6 +6,22 @@
     "background": {
         "service_worker": "background.js"
     },
+    "permissions": [
+        "scripting",
+        "tabs",
+        "notifications"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "*://atcoder.jp/contests/*"
+            ],
+            "js": [
+                "content/dropdown-modify.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
     "host_permissions": [
         "https://atcoder.jp/*"
     ]

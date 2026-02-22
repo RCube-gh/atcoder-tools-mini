@@ -4,8 +4,8 @@ A streamlined set of tools designed for seamless AtCoder code submission through
 
 ## Architecture
 This tool uses a two-part architecture powered by Chrome Native Messaging:
-1. **Local CLI (`cli/`)**: A Python-based command-line interface. When you submit, it acts as a lightweight TCP client that sends your code to a background Native Messaging Host.
-2. **Chrome Extension (`extension/`)**: A background service worker installed in Chrome. It connects directly to the Native Messaging Host (`native_host.py`). This allows the extension to wake up securely and perform submissions in the background, without stealing focus or fighting with browser security rules.
+1. **Local CLI (`cli/`)**: A Python-based command-line package. Once installed natively, it provides the powerful `atm` command. When you submit via `atm submit`, it acts as a lightweight TCP client that sends your code context to a background Native Messaging Host.
+2. **Chrome Extension (`extension/`)**: A background service worker installed in Chrome. It connects directly to the Native Messaging Host (`native_host.py`). This allows the extension to wake up securely and perform submissions directly via real HTTP fetches to AtCoder's API, without stealing focus or fighting with browser runtime throttling rules.
 
 ## Setup
 
@@ -27,10 +27,19 @@ python3 cli/install_native.py
 ### 3. Restart Browser
 **Important:** You MUST completely close and reopen your browser (Chrome/Edge) for Native Messaging to take effect. If you have any Chrome apps running in the background, kill them from the system tray as well.
 
+### 4. Install the Local CLI tool (`atm` command)
+Finally, install the Python CLI side in "editable" mode so you can use the `atm` command anywhere on your file system:
+```bash
+cd cli
+pip install -e .
+```
+
 ## Usage
 
-Simply run:
+Navigate to your workspace directory (for example, `/home/cube/abc443/abc443_a/`) and simply run:
 ```bash
-python3 cli/test_server.py
+atm submit main.cpp
 ```
-This will send your code through the Native Host directly into the browser, silently opening the submission page in the background, submitting it, and sending the exact judgement status back to your terminal and desktop notifications natively!
+_Because the tool guesses the contest_id (`abc443`) and task screen name (`abc443_a`) straight from the folder names, you never have to type them manually!_
+
+This command will send your code through the Native Host directly into the browser, silently open the submission page in a background tab, submit it, and send the exact JSON judgement status back to your terminal, complete with desktop notifications natively!

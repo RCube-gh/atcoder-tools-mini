@@ -1,0 +1,12 @@
+{
+    "manifest_version": 3,
+    "name": "atcoder-tools-mini Extension",
+    "version": "1.0.0",
+    "description": "Chrome extension for automated submission to AtCoder from local CLI.",
+    "background": {
+        "service_worker": "background.js"
+    },
+    "host_permissions": [
+        "https://atcoder.jp/*"
+    ]
+}

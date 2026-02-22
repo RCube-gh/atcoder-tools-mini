@@ -1,0 +1,9 @@
+{
+    "name": "com.atcoder_tools_mini",
+    "description": "AtCoder Tools Mini Native Host",
+    "path": "\\\\wsl.localhost\\Ubuntu-22.04\\home\\cube\\mydir\\projects\\atcoder-tools-mini\\cli\\native_host.bat",
+    "type": "stdio",
+    "allowed_origins": [
+        "chrome-extension://dchaoieenkflbnebhapeeikenkcgphdh/"
+    ]
+}

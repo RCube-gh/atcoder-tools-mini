@@ -197,18 +197,36 @@ async function submitToAtCoder(data) {
 
             if (selectLang) {
                 let found = false;
-                for (const option of selectLang.options) {
-                    if (option.value === submitData.language_id.toString()) {
-                        found = true;
-                        break;
+
+                if (Array.isArray(submitData.language_id)) {
+                    // Try to find an option that matches ALL keywords
+                    for (const option of selectLang.options) {
+                        const textMatch = submitData.language_id.every(kw => option.text.toLowerCase().includes(kw.toLowerCase()));
+                        if (textMatch) {
+                            console.log('[atcoder-tools-mini] Language matched by keywords: ' + option.text + ' (ID: ' + option.value + ')');
+                            submitData.language_id = option.value;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        console.error('[atcoder-tools-mini] Warning: Could not find language matching keywords: ' + submitData.language_id.join(', '));
+                    }
+                } else {
+                    for (const option of selectLang.options) {
+                        if (option.value === submitData.language_id.toString()) {
+                            found = true;
+                            break;
+                        }
                     }
                 }
 
                 if (!found) {
-                    console.error('[atcoder-tools-mini] Warning: Language ID ' + submitData.language_id + ' not found!');
-                    // Try to auto-detect C++
+                    console.error('[atcoder-tools-mini] Warning: Language ' + submitData.language_id + ' not found!');
+                    // Try to auto-detect C++ GCC as an absolute last resort fallback
                     for (const option of selectLang.options) {
-                        if (option.text.includes('C++') && (option.text.includes('gcc') || option.text.includes('g++'))) {
+                        const optText = option.text.toLowerCase();
+                        if (optText.includes('c++') && (optText.includes('gcc') || optText.includes('g++'))) {
                             console.log('[atcoder-tools-mini] Auto-fallback to: ' + option.text + ' (ID: ' + option.value + ')');
                             submitData.language_id = option.value;
                             found = true;
@@ -226,7 +244,7 @@ async function submitToAtCoder(data) {
                         window.jQuery(selectLang).trigger('change');
                     }
                 } else {
-                    console.error('[atcoder-tools-mini] Error: Could not set Language. Make sure the ID is correct.');
+                    console.error('[atcoder-tools-mini] Error: Could not set Language. Make sure the keywords or ID are correct.');
                 }
             } else {
                 console.error('[atcoder-tools-mini] Language select dropdown NOT found in DOM! Selector was: ' + langSelectSelector);

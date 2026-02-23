@@ -3,6 +3,8 @@ import json
 import os
 import sys
 
+from .lang_map import guess_language_id
+
 def guess_contest_and_task(path):
     # Very simple directory-based parsing for now.
     # Ex: /home/cube/abc036/abc036_a -> contest: abc036, task: abc036_a
@@ -25,6 +27,13 @@ def submit_code(args):
         print(f"[CLI] Error: Failed to read {src_path} -> {e}")
         sys.exit(1)
 
+    # Resolve language ID
+    language_id = guess_language_id(args.lang, src_path)
+    if not language_id:
+        print(f"[CLI] Error: Could not determine Language ID for '{src_path}'.")
+        print("Please specify a valid language symbol or ID using '--lang'.")
+        sys.exit(1)
+
     # If the user didn't specify --contest or --task, we guess from the directory path
     cwd = os.getcwd()
     contest_id = args.contest
@@ -34,13 +43,15 @@ def submit_code(args):
         guessed_contest, guessed_task = guess_contest_and_task(cwd)
         contest_id = contest_id or guessed_contest
         task_screen_name = task_screen_name or guessed_task
-        print(f"[CLI] Guessed Context -> Contest: {contest_id}, Task: {task_screen_name}")
+        print(f"[CLI] Guessed Context -> Contest: {contest_id}, Task: {task_screen_name}, Language: {language_id}")
+    else:
+        print(f"[CLI] Context -> Contest: {contest_id}, Task: {task_screen_name}, Language: {language_id}")
 
     payload = {
         "action": "submit",
         "contest_id": contest_id,
         "task_screen_name": task_screen_name,
-        "language_id": args.lang,
+        "language_id": language_id,
         "source_code": source_code
     }
 

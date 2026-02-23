@@ -14,7 +14,7 @@ def main():
     submit_parser.add_argument("src", nargs="?", default="main.cpp", help="Path to source file (default: main.cpp)")
     submit_parser.add_argument("--contest", "-c", help="Contest ID (e.g., abc443). If not provided, it will be guessed from the directory path.")
     submit_parser.add_argument("--task", "-t", help="Task Screen Name (e.g., abc443_a). If not provided, it will be guessed.")
-    submit_parser.add_argument("--lang", "-l", default="5001", help="Language ID (default: 5001 for C++)")
+    submit_parser.add_argument("--lang", "-l", help="Language ID (e.g., 5001) or symbol (e.g., cpp, python). If not provided, it will be guessed from the file extension.")
     
     args = parser.parse_args()
 

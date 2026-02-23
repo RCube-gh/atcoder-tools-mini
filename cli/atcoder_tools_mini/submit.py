@@ -21,10 +21,10 @@ def ts_run(args):
     from .test import run_tests
     success = run_tests(args)
     if success:
-        print("\n\033[92m[CLI] Test passed! Auto-submitting...\033[0m")
+        print("\n[CLI] \033[92mTest passed! Auto-submitting...\033[0m")
         submit_code(args)
     else:
-        print("\n\033[91m[CLI] Tests failed or error occurred. Aborting submission.\033[0m")
+        print("\n[CLI] \033[91mTests failed or error occurred. Aborting submission.\033[0m")
         sys.exit(1)
 
 def submit_code(args):
@@ -34,7 +34,7 @@ def submit_code(args):
         with open(src_path, "r", encoding="utf-8") as f:
             source_code = f.read()
     except Exception as e:
-        print(f"\033[91m[CLI] Error: Failed to read {src_path} -> {e}\033[0m")
+        print(f"[CLI] \033[91mError: Failed to read {src_path} -> {e}\033[0m")
         sys.exit(1)
 
     cwd = os.getcwd()
@@ -47,7 +47,7 @@ def submit_code(args):
             with open(metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
         except json.JSONDecodeError:
-            print(f"\033[93m[CLI] Warning: Failed to parse {metadata_path}. Ignoring.\033[0m")
+            print(f"[CLI] \033[93mWarning: Failed to parse {metadata_path}. Ignoring.\033[0m")
 
     # Resolve language ID
     # Priority: 1. explicit option, 2. file extension
@@ -59,7 +59,7 @@ def submit_code(args):
         language_id = guess_language_id(metadata_lang, None)
         
     if not language_id:
-        print(f"\033[91m[CLI] Error: Could not determine Language ID for '{src_path}'.\033[0m")
+        print(f"[CLI] \033[91mError: Could not determine Language ID for '{src_path}'.\033[0m")
         print("Please specify a valid language symbol or ID using '--lang'.")
         sys.exit(1)
 
@@ -130,5 +130,5 @@ def send_to_native_host(payload):
                 except json.JSONDecodeError:
                     pass
     except ConnectionRefusedError:
-        print("\033[91m[CLI] Error: Could not connect to background Native Host.\033[0m")
-        print("\033[91m[CLI] Please ensure you have run 'python install_native.py', closed your browser and re-opened it.\033[0m")
+        print("[CLI] \033[91mError: Could not connect to background Native Host.\033[0m")
+        print("[CLI] \033[91mPlease ensure you have run 'python install_native.py', closed your browser and re-opened it.\033[0m")

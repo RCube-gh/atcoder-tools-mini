@@ -76,6 +76,7 @@ async function generateContestData(data) {
         const taskRes = await fetch(task.url);
         if (!taskRes.ok) {
             console.error(`Failed to fetch task ${task.label}`);
+            if (port) port.postMessage({ action: 'gen_log', message: `  => Failed: HTTP ${taskRes.status}` });
             continue;
         }
         const taskHtml = await taskRes.text();
@@ -131,6 +132,17 @@ async function generateContestData(data) {
             screen_name: task.screen_name,
             samples: deduplicatedSamples
         });
+
+        if (port) {
+            if (deduplicatedSamples.length > 0) {
+                port.postMessage({ action: 'gen_log', message: `  => Success (${deduplicatedSamples.length} samples)` });
+            } else {
+                port.postMessage({ action: 'gen_log', message: `  => Warning: No samples found` });
+            }
+        }
+
+        // Be polite to AtCoder servers to prevent 429 Too Many Requests
+        await new Promise(r => setTimeout(r, 600));
     }
 
     if (port) {

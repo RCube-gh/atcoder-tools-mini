@@ -113,7 +113,7 @@ def send_to_native_host(payload):
                 try:
                     msg = json.loads(line)
                     if msg.get("status") == "submitted":
-                        print("\n\033[92m[CLI] Code submitted successfully! Exiting CLI to let you write the next code.\033[0m")
+                        print("\n[CLI] \033[92mCode submitted successfully!\033[0m Exiting CLI to let you write the next code.")
                         return
                     elif msg.get("action") == "judge_status":
                         status_info = msg.get("data", {})

@@ -25,6 +25,13 @@ def main():
     test_parser = subparsers.add_parser("test", help="Test source code against sample cases")
     test_parser.add_argument("src", nargs="?", default="main.cpp", help="Path to source file (default: main.cpp)")
 
+    # 'ts' command
+    ts_parser = subparsers.add_parser("ts", help="Test source code and submit if all tests pass")
+    ts_parser.add_argument("src", nargs="?", default="main.cpp", help="Path to source file (default: main.cpp)")
+    ts_parser.add_argument("--contest", "-c", help="Contest ID")
+    ts_parser.add_argument("--task", "-t", help="Task Screen Name")
+    ts_parser.add_argument("--lang", "-l", help="Language ID or symbol")
+
     args = parser.parse_args()
 
     if args.command == "submit":
@@ -35,6 +42,9 @@ def main():
     elif args.command == "test":
         from .test import test_code
         test_code(args)
+    elif args.command == "ts":
+        from .submit import ts_run
+        ts_run(args)
     else:
         parser.print_help()
         sys.exit(1)

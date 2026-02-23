@@ -17,6 +17,16 @@ def guess_contest_and_task(path):
     
     return contest_id, task_screen_name
 
+def ts_run(args):
+    from .test import run_tests
+    success = run_tests(args)
+    if success:
+        print("\n[CLI] Test passed! Auto-submitting...")
+        submit_code(args)
+    else:
+        print("\n[CLI] Tests failed or error occurred. Aborting submission.")
+        sys.exit(1)
+
 def submit_code(args):
     src_path = args.src
     

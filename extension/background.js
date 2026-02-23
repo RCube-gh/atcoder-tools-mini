@@ -11,6 +11,12 @@ function connectNative() {
             submitToAtCoder(msg).catch(err => {
                 console.error('[atcoder-tools-mini] Error during submission:', err);
             });
+        } else if (msg.action === 'gen') {
+            console.log('[atcoder-tools-mini] Gen request received:', msg);
+            generateContestData(msg).catch(err => {
+                console.error('[atcoder-tools-mini] Error during gen:', err);
+                port.postMessage({ action: 'gen_error', error: err.message });
+            });
         }
     });
 
@@ -22,6 +28,119 @@ function connectNative() {
 
 // Initial Native Messaging connection attempt
 connectNative();
+
+async function generateContestData(data) {
+    const contestId = data.contest_id;
+    if (!contestId) {
+        throw new Error('contest_id is missing for gen command.');
+    }
+
+    console.log(`[atcoder-tools-mini] Fetching tasks for ${contestId}...`);
+    if (port) port.postMessage({ action: 'gen_log', message: `Fetching task list for ${contestId}...` });
+
+    const tasksUrl = `https://atcoder.jp/contests/${contestId}/tasks`;
+    const response = await fetch(tasksUrl);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch tasks page: ${response.status}`);
+    }
+    const html = await response.text();
+
+    const tbodyMatch = html.match(/<tbody>(.*?)<\/tbody>/is);
+    if (!tbodyMatch) {
+        throw new Error('Tasks table not found. (Not logged in or no tasks? Check Chrome session.)');
+    }
+
+    // Extract A, B, C etc. and their URLs
+    const rowRegex = /<tr>\s*<td class="text-center(.*?)"><a href="(\/contests\/[^/]+\/tasks\/([^"]+))">([^<]+)<\/a><\/td>/gis;
+    const tasks = [];
+    let match;
+    while ((match = rowRegex.exec(tbodyMatch[1])) !== null) {
+        tasks.push({
+            label: match[4].trim(), // "A", "B", ...
+            url: `https://atcoder.jp${match[2]}`,
+            screen_name: match[3]
+        });
+    }
+
+    if (tasks.length === 0) {
+        throw new Error('No tasks found in the table.');
+    }
+
+    if (port) port.postMessage({ action: 'gen_log', message: `Found ${tasks.length} tasks: ${tasks.map(t => t.label).join(', ')}` });
+
+    const results = [];
+
+    for (const task of tasks) {
+        if (port) port.postMessage({ action: 'gen_log', message: `Downloading samples for ${task.label} (${task.screen_name})...` });
+
+        const taskRes = await fetch(task.url);
+        if (!taskRes.ok) {
+            console.error(`Failed to fetch task ${task.label}`);
+            continue;
+        }
+        const taskHtml = await taskRes.text();
+
+        // Regex to find Sample Input and Output blocks
+        // Using `.*?` instead of `[^<]*` in case of hidden elements or <span>s.
+        const sampleInRegex = /<h3>(?:Sample Input|入力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
+        const sampleOutRegex = /<h3>(?:Sample Output|出力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
+
+        const extractText = (htmlStr) => {
+            let s = htmlStr.replace(/<br\s*\/?>/gi, '\n');
+            s = s.replace(/<[^>]+>/g, '');
+            s = s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+            s = s.replace(/\r\n/g, '\n');
+            // Trim ALL leading/trailing whitespace including newlines, then add a single newline at the end
+            return s.trim() + '\n';
+        };
+
+        const inputs = [];
+        const outputs = [];
+
+        let inMatch;
+        while ((inMatch = sampleInRegex.exec(taskHtml)) !== null) {
+            inputs.push(extractText(inMatch[1]));
+        }
+
+        let outMatch;
+        while ((outMatch = sampleOutRegex.exec(taskHtml)) !== null) {
+            outputs.push(extractText(outMatch[1]));
+        }
+
+        // AtCoder often has dual tabs (lang-ja, lang-en) causing duplicate sample blocks in HTML.
+        // We deduplicate them by checking exact pairs.
+        const deduplicatedSamples = [];
+        const seen = new Set();
+
+        const maxLen = Math.min(inputs.length, outputs.length);
+        for (let i = 0; i < maxLen; i++) {
+            const inText = inputs[i];
+            const outText = outputs[i];
+            const hash = inText + "|_|" + outText;
+            if (!seen.has(hash)) {
+                seen.add(hash);
+                deduplicatedSamples.push({
+                    input: inText,
+                    output: outText
+                });
+            }
+        }
+
+        results.push({
+            label: task.label,
+            screen_name: task.screen_name,
+            samples: deduplicatedSamples
+        });
+    }
+
+    if (port) {
+        port.postMessage({
+            action: 'gen_result',
+            contest_id: contestId,
+            tasks: results
+        });
+    }
+}
 
 async function submitToAtCoder(data) {
     const contestId = data.contest_id;

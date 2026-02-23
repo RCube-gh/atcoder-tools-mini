@@ -1,15 +1,70 @@
 LANGUAGE_TABLE = {
-    "cpp": {"keywords": ["C++", "GCC"], "extensions": [".cpp", ".cc", ".cxx"]},
-    "python": {"keywords": ["Python", "CPython"], "extensions": [".py"]},
-    "pypy": {"keywords": ["PyPy3"], "extensions": [".py"]},
-    "rust": {"keywords": ["Rust", "rustc"], "extensions": [".rs"]},
-    "java": {"keywords": ["Java"], "extensions": [".java"]},
-    "go": {"keywords": ["Go "], "extensions": [".go"]},
-    "c": {"keywords": ["C ", "GCC"], "extensions": [".c"]},
-    "csharp": {"keywords": ["C#", ".NET Native AOT"], "extensions": [".cs"]},
-    "ruby": {"keywords": ["Ruby "], "extensions": [".rb"]},
-    "js": {"keywords": ["JavaScript"], "extensions": [".js"]},
-    "ts": {"keywords": ["TypeScript"], "extensions": [".ts"]},
+    "cpp": {
+        "keywords": ["C++", "GCC"], 
+        "extensions": [".cpp", ".cc", ".cxx"],
+        "compile": ["g++", "-std=gnu++20", "-Wall", "-Wextra", "-O2", "{src}", "-o", "{exec}"],
+        "run": ["./{exec}"]
+    },
+    "python": {
+        "keywords": ["Python", "CPython"], 
+        "extensions": [".py"],
+        "compile": None,
+        "run": ["python3", "{src}"]
+    },
+    "pypy": {
+        "keywords": ["PyPy3"], 
+        "extensions": [".py"],
+        "compile": None,
+        "run": ["pypy3", "{src}"]
+    },
+    "rust": {
+        "keywords": ["Rust", "rustc"], 
+        "extensions": [".rs"],
+        "compile": ["rustc", "-O", "{src}", "-o", "{exec}"],
+        "run": ["./{exec}"]
+    },
+    "java": {
+        "keywords": ["Java"], 
+        "extensions": [".java"],
+        "compile": ["javac", "{src}"],
+        "run": ["java", "{basename}"]
+    },
+    "go": {
+        "keywords": ["Go "], 
+        "extensions": [".go"],
+        "compile": ["go", "build", "-o", "{exec}", "{src}"],
+        "run": ["./{exec}"]
+    },
+    "c": {
+        "keywords": ["C ", "GCC"], 
+        "extensions": [".c"],
+        "compile": ["gcc", "-std=gnu11", "-Wall", "-Wextra", "-O2", "{src}", "-o", "{exec}"],
+        "run": ["./{exec}"]
+    },
+    "csharp": {
+        "keywords": ["C#", ".NET Native AOT"], 
+        "extensions": [".cs"],
+        "compile": ["csc", "-nologo", "-out:{exec}.exe", "{src}"],
+        "run": ["./{exec}.exe"]
+    },
+    "ruby": {
+        "keywords": ["Ruby "], 
+        "extensions": [".rb"],
+        "compile": None,
+        "run": ["ruby", "{src}"]
+    },
+    "js": {
+        "keywords": ["JavaScript"], 
+        "extensions": [".js"],
+        "compile": None,
+        "run": ["node", "{src}"]
+    },
+    "ts": {
+        "keywords": ["TypeScript"], 
+        "extensions": [".ts"],
+        "compile": ["tsc", "{src}"],
+        "run": ["node", "{exec}.js"]
+    },
 }
 
 def guess_language_id(args_lang, src_path):

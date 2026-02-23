@@ -16,10 +16,25 @@ def main():
     submit_parser.add_argument("--task", "-t", help="Task Screen Name (e.g., abc443_a). If not provided, it will be guessed.")
     submit_parser.add_argument("--lang", "-l", help="Language ID (e.g., 5001) or symbol (e.g., cpp, python). If not provided, it will be guessed from the file extension.")
     
+    # 'gen' command
+    gen_parser = subparsers.add_parser("gen", help="Generate contest workspace and download test cases")
+    gen_parser.add_argument("contest_id", help="Contest ID (e.g., abc443)")
+    gen_parser.add_argument("--template", "-t", help="Path to custom template file")
+    
+    # 'test' command
+    test_parser = subparsers.add_parser("test", help="Test source code against sample cases")
+    test_parser.add_argument("src", nargs="?", default="main.cpp", help="Path to source file (default: main.cpp)")
+
     args = parser.parse_args()
 
     if args.command == "submit":
         submit_code(args)
+    elif args.command == "gen":
+        from .gen import gen_contest
+        gen_contest(args)
+    elif args.command == "test":
+        from .test import test_code
+        test_code(args)
     else:
         parser.print_help()
         sys.exit(1)

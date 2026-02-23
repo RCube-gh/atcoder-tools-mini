@@ -27,25 +27,50 @@ def submit_code(args):
         print(f"[CLI] Error: Failed to read {src_path} -> {e}")
         sys.exit(1)
 
+    cwd = os.getcwd()
+    
+    # Try to load metadata.json
+    metadata = {}
+    metadata_path = os.path.join(cwd, "metadata.json")
+    if os.path.isfile(metadata_path):
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        except json.JSONDecodeError:
+            print(f"[CLI] Warning: Failed to parse {metadata_path}. Ignoring.")
+
     # Resolve language ID
+    # Priority: 1. explicit option, 2. file extension
     language_id = guess_language_id(args.lang, src_path)
+    
+    # Priority: 3. metadata.json
+    if not language_id and "lang" in metadata:
+        metadata_lang = metadata["lang"]
+        language_id = guess_language_id(metadata_lang, None)
+        
     if not language_id:
         print(f"[CLI] Error: Could not determine Language ID for '{src_path}'.")
         print("Please specify a valid language symbol or ID using '--lang'.")
         sys.exit(1)
 
-    # If the user didn't specify --contest or --task, we guess from the directory path
-    cwd = os.getcwd()
+    # Resolve Context (contest & task)
+    # Priority: 1. explicit option
     contest_id = args.contest
     task_screen_name = args.task
     
+    # Priority: 2. metadata.json
+    if not contest_id and "problem" in metadata:
+        contest_id = metadata["problem"].get("contest", {}).get("contest_id")
+    if not task_screen_name and "problem" in metadata:
+        task_screen_name = metadata["problem"].get("problem_id")
+        
+    # Priority: 3. directory guessing
     if not contest_id or not task_screen_name:
         guessed_contest, guessed_task = guess_contest_and_task(cwd)
         contest_id = contest_id or guessed_contest
         task_screen_name = task_screen_name or guessed_task
-        print(f"[CLI] Guessed Context -> Contest: {contest_id}, Task: {task_screen_name}, Language: {language_id}")
-    else:
-        print(f"[CLI] Context -> Contest: {contest_id}, Task: {task_screen_name}, Language: {language_id}")
+
+    print(f"[CLI] Context -> Contest: {contest_id}, Task: {task_screen_name}, Language: {language_id}")
 
     payload = {
         "action": "submit",
@@ -64,12 +89,15 @@ def send_to_native_host(payload):
         
         s.sendall(json.dumps(payload).encode('utf-8'))
         
+        buffer = ""
         while True:
             data = s.recv(4096)
             if not data:
                 break
             
-            for line in data.decode('utf-8').split('\n'):
+            buffer += data.decode('utf-8')
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
                 if not line.strip():
                     continue
                 try:

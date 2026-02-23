@@ -1,45 +1,120 @@
-# AtCoder Tools Mini
+# atcoder-tools-mini (atm)
 
-A streamlined set of tools designed for seamless AtCoder code submission through a local CLI and Chrome Extension integration. This project was created to bypass the Cloudflare limitations when submitting code directly via scripts, by securely utilizing the active browser session.
+`atcoder-tools-mini` (abbreviated as `atm`) is a lightweight, blazing-fast, and highly customizable CLI tool designed to completely automate your AtCoder workflow.
 
-## Architecture
-This tool uses a two-part architecture powered by Chrome Native Messaging:
-1. **Local CLI (`cli/`)**: A Python-based command-line package. Once installed natively, it provides the powerful `atm` command. When you submit via `atm submit`, it acts as a lightweight TCP client that sends your code context to a background Native Messaging Host.
-2. **Chrome Extension (`extension/`)**: A background service worker installed in Chrome. It connects directly to the Native Messaging Host (`native_host.py`). This allows the extension to wake up securely and perform submissions directly via real HTTP fetches to AtCoder's API, without stealing focus or fighting with browser runtime throttling rules.
+It serves as a deeply modernized and self-contained alternative to the original `atcoder-tools`. By pairing with a dedicated Chrome Extension, it leverages your browser's existing authenticated session to seamlessly interact with AtCoder, maintaining a completely local, frictionless CLI experience.
 
-## Setup
+## ✨ Key Features
 
-### 1. Load the Chrome Extension
-1. Open Google Chrome (or Edge) and go to `chrome://extensions/`
-2. Enable **Developer mode** in the top right.
-3. Click "Load unpacked" and select the `extension/` directory of this project.
-4. Note the Extension ID generated (e.g. `dchaoieenkflbnebhapeeikenkcgphdh`). The scripts expect this specific ID, so ensure the folder path does not change.
+- **⚡ Auto Generation (`gen`)**: Instantly creates a workspace with problem directories, downloads sample test cases, and injects your favorite code template.
+- **🧪 Robust Local Testing (`test`)**: Compiles and tests your code against sample cases locally. Intelligently ignores trailing whitespaces and empty lines to prevent frustrating and unreasonable WAs.
+- **🚀 One-Command Submission (`ts` / `submit`)**: Submit directly from the CLI. The tool automatically infers the contest, task, and language context. Track real-time judging status right in your terminal!
+- **⚙️ Deep Customization**: Supports multiple programming languages natively and allows infinite customization of compilation/execution commands via `~/.atm_config.json`.
+- **🔗 Browser Integration (Cloudflare Bypass)**: Uses a Chrome Extension with Native Messaging to securely download contest cases and submit code using your active browser session. This ensures stable and reliable communication with AtCoder directly from your terminal, elegantly bypassing Cloudflare 403 blocks!
 
-### 2. Install Native Messaging Host
-Because the extension uses Native Messaging to securely talk to your local file system without polling or WebSocket spam, you MUST install the native host manifest into your OS registry/config.
+---
 
-From your terminal (Linux or WSL), simply run:
-```bash
-python3 cli/install_native.py
-```
-*(If you are on WSL, this script will automatically use PowerShell to add the necessary Windows Registry keys for Chrome and Edge.)*
+## 📦 Installation
 
-### 3. Restart Browser
-**Important:** You MUST completely close and reopen your browser (Chrome/Edge) for Native Messaging to take effect. If you have any Chrome apps running in the background, kill them from the system tray as well.
+To use `atm`, you need to set up both the CLI tool and the accompanying Chrome Extension.
 
-### 4. Install the Local CLI tool (`atm` command)
-Finally, install the Python CLI side in "editable" mode so you can use the `atm` command anywhere on your file system:
+### 1. Install the CLI
+Inside the `cli` directory, install the Python package:
 ```bash
 cd cli
 pip install -e .
 ```
+*(This makes the `atm` command available globally in your terminal).*
 
-## Usage
-
-Navigate to your workspace directory (for example, `/home/cube/abc443/abc443_a/`) and simply run:
+### 2. Configure Native Messaging for Chrome
+The CLI communicates securely with the Chrome extension. Register the native host:
 ```bash
-atm submit main.cpp
+python install_native.py
 ```
-_Because the tool guesses the contest_id (`abc443`) and task screen name (`abc443_a`) straight from the folder names, you never have to type them manually!_
 
-This command will send your code through the Native Host directly into the browser, silently open the submission page in a background tab, submit it, and send the exact JSON judgement status back to your terminal, complete with desktop notifications natively!
+### 3. Load the Chrome Extension
+1. Open Google Chrome and go to `chrome://extensions/`.
+2. Enable **"Developer mode"** in the top right corner.
+3. Click **"Load unpacked"** and select the `extension` folder from this project.
+4. **Restart Chrome** immediately after installation to ensure the Native Host registry is fully detected.
+
+---
+
+## 🛠️ Usage
+
+### 1. Generate Workspace (`atm gen`)
+Run this the moment a contest starts to download all test cases and prepare your environment.
+
+```bash
+atm gen <contest_id>
+# Example: atm gen abc300
+```
+- **What it does**: Scrapes AtCoder, creates a folder for the contest (e.g., `abc300/A`, `abc300/B`), downloads `in_*.txt` & `out_*.txt` sample files, and generates a code file (e.g., `main.cpp` or `main.py`) using your template.
+- **Safety**: If the directory already exists, it will safely abort to prevent overwriting your hard work.
+- **Custom Template**: You can temporarily specify a template via `atm gen abc300 -t /path/to/template.cpp`.
+
+### 2. Local Testing (`atm test`)
+Test your code quickly against the downloaded sample cases.
+
+```bash
+# Inside a task directory (e.g., abc300/A)
+atm test
+# Or specify a file: atm test main.py
+```
+- **What it does**: Automatically determines the language from the file extension, compiles the code (if needed), and runs it against the `in/` and `out/` directories.
+- **Forgiving Comparison**: Strips trailing whitespaces and unnecessary newlines so you won't get a WA for a trivial formatting difference.
+- **Output**: Beautifully formatted terminal output showing `PASSED`, `WA`, `RE`, or `TLE`.
+
+### 3. Test & Submit (`atm ts`)  *RECOMMENDED*
+The ultimate time-saver during a contest.
+
+```bash
+atm ts
+```
+- **What it does**: First runs `atm test`. If **and only if** all sample cases pass (`PASSED`), it automatically submits the code to AtCoder.
+- **Safety**: If even a single test fails, the submission is aborted, saving you from a 5-minute WA penalty!
+
+### 4. Force Submit (`atm submit`)
+Submit code immediately without running local tests.
+
+```bash
+atm submit
+```
+- **Context Inference**: It automatically guesses the Contest ID, Task, and Language ID from the `metadata.json` generated by `atm gen`. You almost never need to specify them manually!
+- **Real-time Status**: After submission, your terminal will display the live judging status (e.g., `Judging: 5/15` ➔ `AC`).
+
+---
+
+## ⚙️ Configuration (`~/.atm_config.json`)
+
+You can deeply customize `atm` by creating a `.atm_config.json` file in your home directory (`~/.atm_config.json`). This allows you to set your default language, template, and even override compilation commands.
+
+**Example `~/.atm_config.json`**:
+```json
+{
+    "lang": "python",
+    "template_path": "~/my_atcoder_template.py",
+    "test_commands": {
+        "python": {
+            "run": "python3 {src}"
+        },
+        "cpp": {
+            "compile": "clang++ -std=c++20 -O3 {src} -o {exec}"
+        }
+    }
+}
+```
+
+### Supported Languages (Defaults)
+By default, `atm` supports and can auto-detect the following languages based on file extensions:
+- `cpp` (.cpp, .cc, .cxx)
+- `python` (.py)
+- `pypy` (.py - requires config override or manual flag)
+- `rust` (.rs)
+- `java` (.java)
+- `go` (.go)
+- `c` (.c)
+- `csharp` (.cs)
+- `ruby` (.rb)
+- `javascript` (.js)
+- `typescript` (.ts)

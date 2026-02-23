@@ -21,10 +21,10 @@ def ts_run(args):
     from .test import run_tests
     success = run_tests(args)
     if success:
-        print("\n[CLI] Test passed! Auto-submitting...")
+        print("\n\033[92m[CLI] Test passed! Auto-submitting...\033[0m")
         submit_code(args)
     else:
-        print("\n[CLI] Tests failed or error occurred. Aborting submission.")
+        print("\n\033[91m[CLI] Tests failed or error occurred. Aborting submission.\033[0m")
         sys.exit(1)
 
 def submit_code(args):
@@ -34,7 +34,7 @@ def submit_code(args):
         with open(src_path, "r", encoding="utf-8") as f:
             source_code = f.read()
     except Exception as e:
-        print(f"[CLI] Error: Failed to read {src_path} -> {e}")
+        print(f"\033[91m[CLI] Error: Failed to read {src_path} -> {e}\033[0m")
         sys.exit(1)
 
     cwd = os.getcwd()
@@ -47,7 +47,7 @@ def submit_code(args):
             with open(metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
         except json.JSONDecodeError:
-            print(f"[CLI] Warning: Failed to parse {metadata_path}. Ignoring.")
+            print(f"\033[93m[CLI] Warning: Failed to parse {metadata_path}. Ignoring.\033[0m")
 
     # Resolve language ID
     # Priority: 1. explicit option, 2. file extension
@@ -59,7 +59,7 @@ def submit_code(args):
         language_id = guess_language_id(metadata_lang, None)
         
     if not language_id:
-        print(f"[CLI] Error: Could not determine Language ID for '{src_path}'.")
+        print(f"\033[91m[CLI] Error: Could not determine Language ID for '{src_path}'.\033[0m")
         print("Please specify a valid language symbol or ID using '--lang'.")
         sys.exit(1)
 
@@ -113,7 +113,7 @@ def send_to_native_host(payload):
                 try:
                     msg = json.loads(line)
                     if msg.get("status") == "submitted":
-                        print("\n[CLI] Code submitted successfully! Exiting CLI to let you write the next code.")
+                        print("\n\033[92m[CLI] Code submitted successfully! Exiting CLI to let you write the next code.\033[0m")
                         return
                     elif msg.get("action") == "judge_status":
                         status_info = msg.get("data", {})
@@ -125,9 +125,10 @@ def send_to_native_host(payload):
                         if state == "JUDGING":
                             print(f"[CLI] Judging: {status_text}", end='\r', flush=True)
                         elif state == "DONE":
-                            print(f"\n[CLI] Judge Complete! Status: {status_text} | Score: {score} | Time: {time_taken}")
+                            color = "\033[92m" if status_text == "AC" else "\033[93m"
+                            print(f"\n[CLI] Judge Complete! Status: {color}{status_text}\033[0m | Score: {score} | Time: {time_taken}")
                 except json.JSONDecodeError:
                     pass
     except ConnectionRefusedError:
-        print("[CLI] Error: Could not connect to background Native Host.")
-        print("[CLI] Please ensure you have run 'python install_native.py', closed your browser and re-opened it.")
+        print("\033[91m[CLI] Error: Could not connect to background Native Host.\033[0m")
+        print("\033[91m[CLI] Please ensure you have run 'python install_native.py', closed your browser and re-opened it.\033[0m")

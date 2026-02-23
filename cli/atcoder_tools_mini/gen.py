@@ -3,14 +3,22 @@ import json
 import os
 import sys
 
+def colorize_msg(msg):
+    import re
+    msg = re.sub(r'\b(Successfully|Success)\b', r'\033[92m\1\033[0m', msg)
+    msg = msg.replace("Download complete!", "\033[92mDownload complete!\033[0m")
+    msg = re.sub(r'\b(Warning)\b', r'\033[93m\1\033[0m', msg)
+    msg = re.sub(r'\b(Error|Failed)\b', r'\033[91m\1\033[0m', msg)
+    return msg
+
 def gen_contest(args):
     contest_id = args.contest_id
     cwd = os.getcwd()
     contest_dir = os.path.join(cwd, contest_id)
     
     if os.path.exists(contest_dir):
-        print(f"[CLI] Error: Directory '{contest_dir}' already exists.")
-        print("[CLI] Aborting to prevent overwriting existing files.")
+        print(colorize_msg(f"[CLI] Error: Directory '{contest_dir}' already exists."))
+        print(colorize_msg("[CLI] Aborting to prevent overwriting existing files."))
         sys.exit(1)
 
     payload = {
@@ -43,19 +51,19 @@ def send_gen_request(payload, cwd, template_path):
                 try:
                     msg = json.loads(line)
                     if msg.get("action") == "gen_log":
-                        print(f"[CLI] {msg.get('message')}")
+                        print(colorize_msg(f"[CLI] {msg.get('message')}"))
                     elif msg.get("action") == "gen_error":
-                        print(f"[CLI] Error: {msg.get('error')}")
+                        print(colorize_msg(f"[CLI] Error: {msg.get('error')}"))
                         return
                     elif msg.get("action") == "gen_result":
-                        print("\n[CLI] Download complete! Building workspace...")
+                        print(colorize_msg("\n[CLI] Download complete! Building workspace..."))
                         build_workspace(msg, cwd, template_path)
                         return
                 except json.JSONDecodeError:
                     pass
     except ConnectionRefusedError:
-        print("[CLI] Error: Could not connect to background Native Host.")
-        print("[CLI] Please ensure you have run 'python install_native.py', closed your browser and re-opened it.")
+        print(colorize_msg("[CLI] Error: Could not connect to background Native Host."))
+        print(colorize_msg("[CLI] Please ensure you have run 'python install_native.py', closed your browser and re-opened it."))
 
 def build_workspace(data, cwd, template_path):
     contest_id = data.get("contest_id")
@@ -149,4 +157,4 @@ def build_workspace(data, cwd, template_path):
             json.dump(metadata, f, indent=1, sort_keys=True)
             f.write("\n")
                 
-    print(f"[CLI] Successfully generated workspace at {contest_dir}")
+    print(colorize_msg(f"[CLI] Successfully generated workspace at {contest_dir}"))

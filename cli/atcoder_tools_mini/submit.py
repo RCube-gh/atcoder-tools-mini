@@ -6,15 +6,18 @@ import sys
 from .lang_map import guess_language_id
 
 def guess_contest_and_task(path):
-    # Very simple directory-based parsing for now.
-    # Ex: /home/cube/abc036/abc036_a -> contest: abc036, task: abc036_a
-    # This will be refined later!
     abs_path = os.path.abspath(path)
     parts = abs_path.split(os.sep)
     
-    task_screen_name = parts[-1]
+    task_dir_name = parts[-1]
     contest_id = parts[-2]
     
+    if len(task_dir_name) == 1 and task_dir_name.isalpha():
+        task_screen_name = f"{contest_id}_{task_dir_name.lower()}"
+    else:
+        # Fallback for other structures like /home/cube/abc036/abc036_a
+        task_screen_name = task_dir_name
+        
     return contest_id, task_screen_name
 
 def ts_run(args):

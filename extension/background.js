@@ -18,6 +18,25 @@ function connectNative() {
                 console.error('[atcoder-tools-mini] Error during gen:', err);
                 port.postMessage({ action: 'gen_error', error: err.message });
             });
+        } else if (msg.action === 'get_current_context') {
+            console.log('[atcoder-tools-mini] Context request received.');
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+                if (!tabs || tabs.length === 0) {
+                    port.postMessage({ action: 'current_context_error', error: 'No active tab found.' });
+                    return;
+                }
+                const url = tabs[0].url || '';
+                const match = url.match(/atcoder\.jp\/contests\/([^/]+)(?:\/tasks\/([^/]+))?/);
+                if (match) {
+                    port.postMessage({
+                        action: 'current_context',
+                        contest_id: match[1],
+                        task_screen_name: match[2] || null
+                    });
+                } else {
+                    port.postMessage({ action: 'current_context_error', error: 'Active tab is not an AtCoder contest/task page.' });
+                }
+            });
         }
     });
 
@@ -453,8 +472,8 @@ async function submitToAtCoder(data) {
 
                     setTimeout(() => {
                         clearInterval(checkInterval);
-                        reject(new Error('Turnstile verification timed out after 60 seconds.'));
-                    }, 60000);
+                        reject(new Error('Turnstile verification timed out after 10 seconds.'));
+                    }, 10000);
 
                 } else {
                     reject(new Error('Submit button not found!'));

@@ -10,6 +10,7 @@ It serves as a deeply modernized and self-contained alternative to the original 
 - **🧪 Robust Local Testing (`test`)**: Compiles and tests your code against sample cases locally. Intelligently ignores trailing whitespaces and empty lines to prevent frustrating and unreasonable WAs.
 - **🚀 One-Command Submission (`ts` / `submit`)**: Submit directly from the CLI. The tool automatically infers the contest, task, and language context. Track real-time judging status right in your terminal!
 - **⚙️ Deep Customization**: Supports multiple programming languages natively and allows infinite customization of compilation/execution commands via `~/.atm_config.json`.
+- **🎯 Tab-Sync Fallback**: Effortlessly test and submit from *any* directory. If your CLI lacks context or test cases, `atm` magically infers the contest and problem ID directly from your active browser tab, extracting and running sample cases in a temporary room on the fly!
 - **🔗 Browser Integration (Cloudflare Bypass)**: Uses a Chrome Extension with Native Messaging to securely download contest cases and submit code using your active browser session. This ensures stable and reliable communication with AtCoder directly from your terminal, elegantly bypassing Cloudflare 403 blocks!
 
 ---
@@ -48,6 +49,7 @@ Run this the moment a contest starts to download all test cases and prepare your
 ```bash
 atm gen <contest_id>
 # Example: atm gen abc300
+# Or simply type `atm gen` to let Tab-Sync Fallback infer the contest from your active Chrome tab.
 ```
 - **What it does**: Scrapes AtCoder, creates a folder for the contest (e.g., `abc300/A`, `abc300/B`), downloads `in_*.txt` & `out_*.txt` sample files, and generates a code file (e.g., `main.cpp` or `main.py`) using your template.
 - **Safety**: If the directory already exists, it will safely abort to prevent overwriting your hard work.
@@ -72,6 +74,7 @@ The ultimate time-saver during a contest.
 atm ts
 ```
 - **What it does**: First runs `atm test`. If **and only if** all sample cases pass (`PASSED`), it automatically submits the code to AtCoder.
+- **Tab-Sync Fallback**: If you run this from a directory without test cases, `atm` instantly extracts the samples from the problem page you are currently viewing in Chrome. It safely tests your code in a hidden temporary folder before automatically cleaning up and submitting everything.
 - **Safety**: If even a single test fails, the submission is aborted, saving you from a 5-minute WA penalty!
 
 ### 4. Force Submit (`atm submit`)

@@ -426,11 +426,21 @@ async function submitToAtCoder(data) {
                     return reject(new Error('plain-textarea not found!'));
                 }
 
-                // Wait for Cloudflare Turnstile
+                // Wait for Cloudflare Turnstile if it exists, otherwise submit immediately
                 const submitBtn = document.getElementById('submit') || document.querySelector('button[type="submit"]');
                 if (submitBtn) {
-                    console.log('[atcoder-tools-mini] Waiting for Cloudflare Turnstile verification...');
+                    console.log('[atcoder-tools-mini] Checking for Cloudflare Turnstile...');
 
+                    // If the cf-turnstile-response element doesn't exist at all, we might be in a contest where bot protection is off
+                    const turnstileContainer = document.querySelector('[name="cf-turnstile-response"]');
+                    if (!turnstileContainer) {
+                        console.log('[atcoder-tools-mini] Turnstile not detected on page. Clicking submit button immediately!');
+                        submitBtn.click();
+                        resolve();
+                        return;
+                    }
+
+                    console.log('[atcoder-tools-mini] Turnstile detected. Waiting for verification...');
                     const checkInterval = setInterval(() => {
                         const cfResponse = document.querySelector('[name="cf-turnstile-response"]');
                         if (cfResponse && cfResponse.value && cfResponse.value.length > 0) {

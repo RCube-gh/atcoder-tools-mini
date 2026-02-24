@@ -6,18 +6,32 @@ import json
 import glob
 from .lang_map import LANGUAGE_TABLE
 
-def get_test_commands(src_path):
-    _, ext = os.path.splitext(src_path)
-    ext = ext.lower()
-    
+def get_test_commands(args, src_path, metadata):
     symbol_found = None
-    for symbol, info in LANGUAGE_TABLE.items():
-        if ext in info["extensions"]:
-            symbol_found = symbol
-            break
-            
+    
+    # Priority 1: explicit option
+    if hasattr(args, 'lang') and args.lang:
+        args_lang_lower = args.lang.lower()
+        if args_lang_lower in LANGUAGE_TABLE:
+            symbol_found = args_lang_lower
+
+    # Priority 2: file extension
     if not symbol_found:
-        print(f"[CLI] \033[91mError: File extension '{ext}' is not supported for local testing.\033[0m")
+        _, ext = os.path.splitext(src_path)
+        ext = ext.lower()
+        for symbol, info in LANGUAGE_TABLE.items():
+            if ext in info["extensions"]:
+                symbol_found = symbol
+                break
+
+    # Priority 3: metadata.json
+    if not symbol_found and metadata and "lang" in metadata:
+        meta_lang = metadata["lang"].lower()
+        if meta_lang in LANGUAGE_TABLE:
+            symbol_found = meta_lang
+                
+    if not symbol_found:
+        print(f"[CLI] \033[91mError: Could not determine language for local testing of '{src_path}'.\033[0m")
         sys.exit(1)
         
     compile_cmd = LANGUAGE_TABLE[symbol_found]["compile"]
@@ -51,11 +65,21 @@ def run_tests(args):
     with the `out/` directory.
     """
     src_path = args.src
-    
+    cwd = os.getcwd()
     
     import datetime
     
-    compile_template, run_template = get_test_commands(src_path)
+    # Try to load metadata.json
+    metadata = {}
+    metadata_path = os.path.join(cwd, "metadata.json")
+    if os.path.isfile(metadata_path):
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        except json.JSONDecodeError:
+            pass
+            
+    compile_template, run_template = get_test_commands(args, src_path, metadata)
     
     exec_filename = "a.out" if os.name != "nt" else "a.exe"
     file_base = os.path.splitext(os.path.basename(src_path))[0]

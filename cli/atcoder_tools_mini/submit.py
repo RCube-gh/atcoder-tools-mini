@@ -77,7 +77,17 @@ def submit_code(args):
     if not task_screen_name and "problem" in metadata:
         task_screen_name = metadata["problem"].get("problem_id")
         
-    # Priority: 3. directory guessing
+    # Priority: 3. Tab-Sync Fallback
+    if (not contest_id or not task_screen_name) and not metadata:
+        sys.stdout.flush()
+        from .gen import request_current_context
+        ctx = request_current_context()
+        if ctx and ctx.get("contest_id") and ctx.get("task_screen_name"):
+            print("[CLI] \033[96mUsing Tab-Sync Fallback for contest context...\033[0m")
+            contest_id = contest_id or ctx.get("contest_id")
+            task_screen_name = task_screen_name or ctx.get("task_screen_name")
+
+    # Priority: 4. directory guessing
     if not contest_id or not task_screen_name:
         guessed_contest, guessed_task = guess_contest_and_task(cwd)
         contest_id = contest_id or guessed_contest

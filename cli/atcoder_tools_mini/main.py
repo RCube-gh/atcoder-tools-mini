@@ -18,7 +18,7 @@ def main():
     
     # 'gen' command
     gen_parser = subparsers.add_parser("gen", help="Generate contest workspace and download test cases")
-    gen_parser.add_argument("contest_id", help="Contest ID (e.g., abc443)")
+    gen_parser.add_argument("contest_id", nargs="?", default=None, help="Contest ID (e.g., abc443). If omitted, inferred from active browser tab.")
     gen_parser.add_argument("--template", "-t", help="Path to custom template file")
     
     # 'test' command

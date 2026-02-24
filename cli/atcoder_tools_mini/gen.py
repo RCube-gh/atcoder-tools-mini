@@ -14,6 +14,14 @@ def colorize_msg(msg):
 def gen_contest(args):
     contest_id = args.contest_id
     cwd = os.getcwd()
+    
+    if not contest_id:
+        print("[CLI] No contest ID provided. Asking browser for current context...")
+        ctx = request_current_context()
+        if not ctx or not ctx.get("contest_id"):
+            sys.exit(1)
+        contest_id = ctx["contest_id"]
+            
     contest_dir = os.path.join(cwd, contest_id)
     
     if os.path.exists(contest_dir):
@@ -27,6 +35,44 @@ def gen_contest(args):
     }
     
     send_gen_request(payload, cwd=cwd, template_path=args.template)
+
+def request_current_context():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', 49153))
+        
+        payload = {"action": "get_current_context"}
+        s.sendall((json.dumps(payload) + "\n").encode('utf-8'))
+        
+        buffer = ""
+        while True:
+            data = s.recv(4096)
+            if not data:
+                break
+            
+            buffer += data.decode('utf-8')
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                    if msg.get("action") == "current_context":
+                        contest_id = msg.get("contest_id")
+                        contest_id = msg.get("contest_id")
+                        task = msg.get("task_screen_name")
+                        print(f"[CLI] Inferred context from browser: {task or contest_id}")
+                        s.close()
+                        return msg
+                    elif msg.get("action") == "current_context_error":
+                        print(f"[CLI] \033[91mError: {msg.get('error')}\033[0m")
+                        s.close()
+                        return None
+                except json.JSONDecodeError:
+                    pass
+    except ConnectionRefusedError:
+        print("[CLI] \033[91mError: Could not connect to background Native Host.\033[0m")
+        return None
 
 def send_gen_request(payload, cwd, template_path):
     try:

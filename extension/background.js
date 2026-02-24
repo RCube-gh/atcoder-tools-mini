@@ -20,7 +20,7 @@ function connectNative() {
             });
         } else if (msg.action === 'get_current_context') {
             console.log('[atcoder-tools-mini] Context request received.');
-            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
                 if (!tabs || tabs.length === 0) {
                     port.postMessage({ action: 'current_context_error', error: 'No active tab found.' });
                     return;
@@ -28,10 +28,24 @@ function connectNative() {
                 const url = tabs[0].url || '';
                 const match = url.match(/atcoder\.jp\/contests\/([^/]+)(?:\/tasks\/([^/]+))?/);
                 if (match) {
+                    let samples = null;
+                    if (match[2]) { // If it's a task page, try to fetch samples
+                        try {
+                            const res = await fetch(url);
+                            if (res.ok) {
+                                const html = await res.text();
+                                samples = extractSamplesFromHtml(html);
+                            }
+                        } catch (e) {
+                            console.error('[atcoder-tools-mini] Failed to fetch samples for fallback:', e);
+                        }
+                    }
+
                     port.postMessage({
                         action: 'current_context',
                         contest_id: match[1],
-                        task_screen_name: match[2] || null
+                        task_screen_name: match[2] || null,
+                        samples: samples
                     });
                 } else {
                     port.postMessage({ action: 'current_context_error', error: 'Active tab is not an AtCoder contest/task page.' });
@@ -48,6 +62,56 @@ function connectNative() {
 
 // Initial Native Messaging connection attempt
 connectNative();
+
+function extractSamplesFromHtml(htmlStr) {
+    // Regex to find Sample Input and Output blocks
+    // Using `.*?` instead of `[^<]*` in case of hidden elements or <span>s.
+    const sampleInRegex = /<h3>(?:Sample Input|入力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
+    const sampleOutRegex = /<h3>(?:Sample Output|出力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
+
+    const extractText = (s) => {
+        let str = s.replace(/<br\s*\/?>/gi, '\n');
+        str = str.replace(/<[^>]+>/g, '');
+        str = str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+        str = str.replace(/\r\n/g, '\n');
+        // Trim ALL leading/trailing whitespace including newlines, then add a single newline at the end
+        return str.trim() + '\n';
+    };
+
+    const inputs = [];
+    const outputs = [];
+
+    let inMatch;
+    while ((inMatch = sampleInRegex.exec(htmlStr)) !== null) {
+        inputs.push(extractText(inMatch[1]));
+    }
+
+    let outMatch;
+    while ((outMatch = sampleOutRegex.exec(htmlStr)) !== null) {
+        outputs.push(extractText(outMatch[1]));
+    }
+
+    // AtCoder often has dual tabs (lang-ja, lang-en) causing duplicate sample blocks in HTML.
+    // We deduplicate them by checking exact pairs.
+    const deduplicatedSamples = [];
+    const seen = new Set();
+
+    const maxLen = Math.min(inputs.length, outputs.length);
+    for (let i = 0; i < maxLen; i++) {
+        const inText = inputs[i];
+        const outText = outputs[i];
+        const hash = inText + "|_|" + outText;
+        if (!seen.has(hash)) {
+            seen.add(hash);
+            deduplicatedSamples.push({
+                input: inText,
+                output: outText
+            });
+        }
+    }
+
+    return deduplicatedSamples;
+}
 
 async function generateContestData(data) {
     const contestId = data.contest_id;
@@ -101,51 +165,7 @@ async function generateContestData(data) {
         }
         const taskHtml = await taskRes.text();
 
-        // Regex to find Sample Input and Output blocks
-        // Using `.*?` instead of `[^<]*` in case of hidden elements or <span>s.
-        const sampleInRegex = /<h3>(?:Sample Input|入力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
-        const sampleOutRegex = /<h3>(?:Sample Output|出力例)\s*\d+.*?<\/h3>.*?<pre>(.*?)<\/pre>/gis;
-
-        const extractText = (htmlStr) => {
-            let s = htmlStr.replace(/<br\s*\/?>/gi, '\n');
-            s = s.replace(/<[^>]+>/g, '');
-            s = s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-            s = s.replace(/\r\n/g, '\n');
-            // Trim ALL leading/trailing whitespace including newlines, then add a single newline at the end
-            return s.trim() + '\n';
-        };
-
-        const inputs = [];
-        const outputs = [];
-
-        let inMatch;
-        while ((inMatch = sampleInRegex.exec(taskHtml)) !== null) {
-            inputs.push(extractText(inMatch[1]));
-        }
-
-        let outMatch;
-        while ((outMatch = sampleOutRegex.exec(taskHtml)) !== null) {
-            outputs.push(extractText(outMatch[1]));
-        }
-
-        // AtCoder often has dual tabs (lang-ja, lang-en) causing duplicate sample blocks in HTML.
-        // We deduplicate them by checking exact pairs.
-        const deduplicatedSamples = [];
-        const seen = new Set();
-
-        const maxLen = Math.min(inputs.length, outputs.length);
-        for (let i = 0; i < maxLen; i++) {
-            const inText = inputs[i];
-            const outText = outputs[i];
-            const hash = inText + "|_|" + outText;
-            if (!seen.has(hash)) {
-                seen.add(hash);
-                deduplicatedSamples.push({
-                    input: inText,
-                    output: outText
-                });
-            }
-        }
+        const deduplicatedSamples = extractSamplesFromHtml(taskHtml);
 
         results.push({
             label: task.label,

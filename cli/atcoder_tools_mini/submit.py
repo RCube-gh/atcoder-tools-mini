@@ -102,36 +102,9 @@ def send_to_native_host(payload):
         
         s.sendall(json.dumps(payload).encode('utf-8'))
         
-        buffer = ""
-        while True:
-            data = s.recv(4096)
-            if not data:
-                break
-            
-            buffer += data.decode('utf-8')
-            while '\n' in buffer:
-                line, buffer = buffer.split('\n', 1)
-                if not line.strip():
-                    continue
-                try:
-                    msg = json.loads(line)
-                    if msg.get("status") == "submitted":
-                        print("\n[CLI] \033[92mCode submitted successfully!\033[0m Exiting CLI to let you write the next code.")
-                        return
-                    elif msg.get("action") == "judge_status":
-                        status_info = msg.get("data", {})
-                        state = status_info.get("state")
-                        status_text = status_info.get("status")
-                        score = status_info.get("score", "")
-                        time_taken = status_info.get("time", "")
-                        
-                        if state == "JUDGING":
-                            print(f"[CLI] Judging: {status_text}", end='\r', flush=True)
-                        elif state == "DONE":
-                            color = "\033[92m" if status_text == "AC" else "\033[93m"
-                            print(f"\n[CLI] Judge Complete! Status: {color}{status_text}\033[0m | Score: {score} | Time: {time_taken}")
-                except json.JSONDecodeError:
-                    pass
+        print("\n[CLI] \033[92mSubmission dispatched to the browser!\033[0m")
+        print("[CLI] Processing in the background... Check notifications for the result (AC/WA).")
+        return
     except ConnectionRefusedError:
         print("[CLI] \033[91mError: Could not connect to background Native Host.\033[0m")
         print("[CLI] \033[91mPlease ensure you have run 'python install_native.py', closed your browser and re-opened it.\033[0m")

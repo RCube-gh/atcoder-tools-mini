@@ -10,6 +10,7 @@ function connectNative() {
             // Execute logic silently in the background!
             submitToAtCoder(msg).catch(err => {
                 console.error('[atcoder-tools-mini] Error during submission:', err);
+                showErrorNotification(`Submission Failed: ${msg.task_screen_name || 'Unknown'}`, err.message || String(err));
             });
         } else if (msg.action === 'gen') {
             console.log('[atcoder-tools-mini] Gen request received:', msg);
@@ -151,6 +152,37 @@ async function generateContestData(data) {
             contest_id: contestId,
             tasks: results
         });
+    }
+}
+
+async function showErrorNotification(title, message) {
+    try {
+        const width = 192;
+        const height = 192;
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'hsl(0, 84%, 62%)'; // red
+        ctx.fillRect(0, 0, width, height);
+        ctx.font = "bold 60px 'Lato','Helvetica Neue',arial,sans-serif";
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('ERR', width / 2, height / 2);
+
+        const blob = await canvas.convertToBlob({ type: 'image/png' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: reader.result,
+                title: title,
+                message: message,
+                priority: 2
+            });
+        };
+        reader.readAsDataURL(blob);
+    } catch (err) {
+        console.error('[atcoder-tools-mini] Notification error:', err);
     }
 }
 
@@ -311,129 +343,113 @@ async function submitToAtCoder(data) {
     await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
-        func: (submitData) => {
+        func: async (submitData) => {
             console.log('[atcoder-tools-mini] Interacting with DOM...', submitData);
+            return new Promise((resolve, reject) => {
+                // Set Task Screen Name
+                const selectTask = document.querySelector('select[name="data.TaskScreenName"]');
+                if (selectTask) {
+                    selectTask.value = submitData.task_screen_name;
+                    selectTask.dispatchEvent(new Event('change', { bubbles: true }));
+                }
 
-            // Set Task Screen Name
-            const selectTask = document.querySelector('select[name="data.TaskScreenName"]');
-            if (selectTask) {
-                selectTask.value = submitData.task_screen_name;
-                selectTask.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+                // Set Language ID
+                const langSelectSelector = '#select-lang-' + submitData.task_screen_name + ' select';
+                const selectLang = document.querySelector(langSelectSelector) || document.querySelector('select.form-control[data-placeholder="-"]');
 
-            // Set Language ID
-            // AtCoder creates multiple select boxes, one for each task, inside #select-lang-{task_screen_name}
-            const langSelectSelector = '#select-lang-' + submitData.task_screen_name + ' select';
-            const selectLang = document.querySelector(langSelectSelector) || document.querySelector('select.form-control[data-placeholder="-"]');
+                if (selectLang) {
+                    let found = false;
 
-            if (selectLang) {
-                let found = false;
-
-                if (Array.isArray(submitData.language_id)) {
-                    // Try to find an option that matches ALL keywords
-                    for (const option of selectLang.options) {
-                        const textMatch = submitData.language_id.every(kw => option.text.toLowerCase().includes(kw.toLowerCase()));
-                        if (textMatch) {
-                            console.log('[atcoder-tools-mini] Language matched by keywords: ' + option.text + ' (ID: ' + option.value + ')');
-                            submitData.language_id = option.value;
-                            found = true;
-                            break;
+                    if (Array.isArray(submitData.language_id)) {
+                        for (const option of selectLang.options) {
+                            const textMatch = submitData.language_id.every(kw => option.text.toLowerCase().includes(kw.toLowerCase()));
+                            if (textMatch) {
+                                console.log('[atcoder-tools-mini] Language matched by keywords: ' + option.text + ' (ID: ' + option.value + ')');
+                                submitData.language_id = option.value;
+                                found = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        for (const option of selectLang.options) {
+                            if (option.value === submitData.language_id.toString()) {
+                                found = true;
+                                break;
+                            }
                         }
                     }
+
                     if (!found) {
-                        console.error('[atcoder-tools-mini] Warning: Could not find language matching keywords: ' + submitData.language_id.join(', '));
-                    }
-                } else {
-                    for (const option of selectLang.options) {
-                        if (option.value === submitData.language_id.toString()) {
-                            found = true;
-                            break;
+                        for (const option of selectLang.options) {
+                            const optText = option.text.toLowerCase();
+                            if (optText.includes('c++') && (optText.includes('gcc') || optText.includes('g++'))) {
+                                submitData.language_id = option.value;
+                                found = true;
+                                break;
+                            }
                         }
                     }
-                }
 
-                if (!found) {
-                    console.error('[atcoder-tools-mini] Warning: Language ' + submitData.language_id + ' not found!');
-                    // Try to auto-detect C++ GCC as an absolute last resort fallback
-                    for (const option of selectLang.options) {
-                        const optText = option.text.toLowerCase();
-                        if (optText.includes('c++') && (optText.includes('gcc') || optText.includes('g++'))) {
-                            console.log('[atcoder-tools-mini] Auto-fallback to: ' + option.text + ' (ID: ' + option.value + ')');
-                            submitData.language_id = option.value;
-                            found = true;
-                            break;
+                    if (found) {
+                        selectLang.value = submitData.language_id;
+                        selectLang.dispatchEvent(new Event('change', { bubbles: true }));
+
+                        if (window.jQuery && window.jQuery(selectLang).select2) {
+                            window.jQuery(selectLang).trigger('change');
                         }
-                    }
-                }
-
-                if (found) {
-                    selectLang.value = submitData.language_id;
-                    selectLang.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    // If Select2 is used (AtCoder uses jQuery and Select2 for languages)
-                    if (window.jQuery && window.jQuery(selectLang).select2) {
-                        window.jQuery(selectLang).trigger('change');
+                    } else {
+                        return reject(new Error('Could not set Language. Keywords or ID not found.'));
                     }
                 } else {
-                    console.error('[atcoder-tools-mini] Error: Could not set Language. Make sure the keywords or ID are correct.');
+                    return reject(new Error('Language select dropdown NOT found in DOM! Selector was: ' + langSelectSelector));
                 }
-            } else {
-                console.error('[atcoder-tools-mini] Language select dropdown NOT found in DOM! Selector was: ' + langSelectSelector);
-            }
 
-            // Set Source Code into Ace editor
-            console.log('[atcoder-tools-mini] Attempting to set source code...');
+                // Set Source Code
+                const plainTextArea = document.querySelector('textarea#plain-textarea');
 
-            // AtCoder uses Ace Editor and a hidden plain-textarea!
-            const plainTextArea = document.querySelector('textarea#plain-textarea');
-
-            if (typeof window.ace !== 'undefined') {
-                try {
-                    console.log('[atcoder-tools-mini] Ace editor found on window. Setting value...');
-                    const editor = window.ace.edit("editor");
-                    editor.setValue(submitData.source_code, -1); // -1 moves cursor to start
-                } catch (err) {
-                    console.error('[atcoder-tools-mini] Failed to set Ace Editor value:', err);
+                if (typeof window.ace !== 'undefined') {
+                    try {
+                        const editor = window.ace.edit("editor");
+                        editor.setValue(submitData.source_code, -1);
+                    } catch (err) {
+                        console.error('[atcoder-tools-mini] Failed to set Ace Editor value:', err);
+                    }
                 }
-            }
 
-            // Always set the plain textarea as a fallback
-            if (plainTextArea) {
-                console.log('[atcoder-tools-mini] Setting value on plain-textarea...');
-                plainTextArea.value = submitData.source_code;
-                plainTextArea.innerHTML = submitData.source_code;
-                ['input', 'change', 'blur'].forEach(evt => {
-                    plainTextArea.dispatchEvent(new Event(evt, { bubbles: true }));
-                });
-            } else {
-                console.error('[atcoder-tools-mini] plain-textarea not found!');
-            }
+                if (plainTextArea) {
+                    plainTextArea.value = submitData.source_code;
+                    plainTextArea.innerHTML = submitData.source_code;
+                    ['input', 'change', 'blur'].forEach(evt => {
+                        plainTextArea.dispatchEvent(new Event(evt, { bubbles: true }));
+                    });
+                } else {
+                    return reject(new Error('plain-textarea not found!'));
+                }
 
-            // 4. Wait for Cloudflare Turnstile before clicking the Submit Button
-            const submitBtn = document.getElementById('submit') || document.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                console.log('[atcoder-tools-mini] Waiting for Cloudflare Turnstile verification...');
+                // Wait for Cloudflare Turnstile
+                const submitBtn = document.getElementById('submit') || document.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    console.log('[atcoder-tools-mini] Waiting for Cloudflare Turnstile verification...');
 
-                // Polling for the Turnstile response token
-                const checkInterval = setInterval(() => {
-                    // Turnstile injects a hidden input with name "cf-turnstile-response"
-                    const cfResponse = document.querySelector('[name="cf-turnstile-response"]');
-                    if (cfResponse && cfResponse.value && cfResponse.value.length > 0) {
-                        console.log('[atcoder-tools-mini] Turnstile Success! Clicking submit button...');
+                    const checkInterval = setInterval(() => {
+                        const cfResponse = document.querySelector('[name="cf-turnstile-response"]');
+                        if (cfResponse && cfResponse.value && cfResponse.value.length > 0) {
+                            console.log('[atcoder-tools-mini] Turnstile Success! Clicking submit button...');
+                            clearInterval(checkInterval);
+                            submitBtn.click();
+                            resolve();
+                        }
+                    }, 500);
+
+                    setTimeout(() => {
                         clearInterval(checkInterval);
-                        submitBtn.click();
-                    }
-                }, 500);
+                        reject(new Error('Turnstile verification timed out after 60 seconds.'));
+                    }, 60000);
 
-                // Stop checking after 60 seconds to prevent infinite loops just in case
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                    console.log('[atcoder-tools-mini] Stopped polling for Turnstile after 60 seconds.');
-                }, 60000);
-
-            } else {
-                console.error('[atcoder-tools-mini] Submit button not found!');
-            }
+                } else {
+                    reject(new Error('Submit button not found!'));
+                }
+            });
         },
         args: [data]
     });

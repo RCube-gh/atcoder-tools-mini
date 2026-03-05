@@ -259,9 +259,12 @@ async function submitToAtCoder(data) {
                 port.postMessage({ status: 'submitted' });
             }
 
-            // Fetch directly from Service Worker to avoid background tab throttling
+            let lastStatusValue = '';
+            let stuckCounter = 0;
+
             const monitorInterval = setInterval(async () => {
                 try {
+                    // Fetch submissions page
                     const response = await fetch(`https://atcoder.jp/contests/${contestId}/submissions/me`, { cache: 'no-store' });
                     if (!response.ok) return;
                     const html = await response.text();
@@ -278,19 +281,52 @@ async function submitToAtCoder(data) {
 
                     const score = tdsMatch[4][1].replace(/<[^>]+>/g, '').trim();
                     const statusText = tdsMatch[6][1].replace(/<[^>]+>/g, '').trim();
-                    const isWJ = statusText.includes('WJ') || statusText.includes('Judging') || statusText === '1/1' || statusText.includes('/');
                     const time = tdsMatch.length > 7 ? tdsMatch[7][1].replace(/<[^>]+>/g, '').trim() : '';
 
                     const detailHrefMatch = rowHtml.match(/href="(\/contests\/[^/]+\/submissions\/\d+)"/);
                     const href = detailHrefMatch ? `https://atcoder.jp${detailHrefMatch[1]}` : '';
 
+                    // Check if it's currently judging
+                    const isJudging = statusText.includes('WJ') || statusText.includes('Judging') || statusText === '1/1';
+
+                    // Fail fast! If the status contains anything like "WA", "TLE", "RE", "MLE" etc., it's a failure.
+                    // Even if it says "5/20 WA", we know it's not going to be AC anymore.
+                    let isFailFast = false;
+                    let finalStatusText = statusText;
+
+                    if (statusText.includes('/')) {
+                        // Extract the letters at the end, e.g., "5/20 WA" -> "WA"
+                        const matchFail = statusText.match(/\d+\/\d+\s+([A-Z]+)/);
+                        if (matchFail) {
+                            finalStatusText = matchFail[1];
+                            isFailFast = true;
+                        }
+                    }
+
+                    // The state is "DONE" if it's a fail fast (WA, TLE etc), or if it's completely finished (AC, WA, TLE, etc without WJ/split)
+                    const isDone = isFailFast || (!isJudging && !statusText.includes('/'));
+
+                    if (statusText === lastStatusValue && !isDone) {
+                        stuckCounter++;
+                    } else {
+                        stuckCounter = 0;
+                        lastStatusValue = statusText;
+                    }
+
                     const res = {
-                        state: isWJ ? 'JUDGING' : 'DONE',
-                        status: statusText,
+                        state: isDone ? 'DONE' : 'JUDGING',
+                        status: isDone ? finalStatusText : statusText,
                         score: score,
                         time: time,
                         href: href
                     };
+
+                    // If stuck with no changes for 5 seconds (5 intervals), force reload the tab to clear cache/stuck states
+                    if (stuckCounter >= 5) {
+                        console.log('[atcoder-tools-mini] WJ state seems stuck. Reloading the submissions page...');
+                        chrome.tabs.reload(tab.id, { bypassCache: true });
+                        stuckCounter = 0; // reset
+                    }
 
                     if (res) {
                         console.log('[atcoder-tools-mini] Monitor status:', res);
@@ -378,130 +414,142 @@ async function submitToAtCoder(data) {
 
     console.log(`[atcoder-tools-mini] Injecting submission script into tab ${tab.id}`);
 
-    // Inject content script into the page context
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        func: async (submitData) => {
-            console.log('[atcoder-tools-mini] Interacting with DOM...', submitData);
-            return new Promise((resolve, reject) => {
-                // Set Task Screen Name
-                const selectTask = document.querySelector('select[name="data.TaskScreenName"]');
-                if (selectTask) {
-                    selectTask.value = submitData.task_screen_name;
-                    selectTask.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-
-                // Set Language ID
-                const langSelectSelector = '#select-lang-' + submitData.task_screen_name + ' select';
-                const selectLang = document.querySelector(langSelectSelector) || document.querySelector('select.form-control[data-placeholder="-"]');
-
-                if (selectLang) {
-                    let found = false;
-
-                    if (Array.isArray(submitData.language_id)) {
-                        for (const option of selectLang.options) {
-                            const textMatch = submitData.language_id.every(kw => option.text.toLowerCase().includes(kw.toLowerCase()));
-                            if (textMatch) {
-                                console.log('[atcoder-tools-mini] Language matched by keywords: ' + option.text + ' (ID: ' + option.value + ')');
-                                submitData.language_id = option.value;
-                                found = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        for (const option of selectLang.options) {
-                            if (option.value === submitData.language_id.toString()) {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!found) {
-                        for (const option of selectLang.options) {
-                            const optText = option.text.toLowerCase();
-                            if (optText.includes('c++') && (optText.includes('gcc') || optText.includes('g++'))) {
-                                submitData.language_id = option.value;
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (found) {
-                        selectLang.value = submitData.language_id;
-                        selectLang.dispatchEvent(new Event('change', { bubbles: true }));
-
-                        if (window.jQuery && window.jQuery(selectLang).select2) {
-                            window.jQuery(selectLang).trigger('change');
-                        }
-                    } else {
-                        return reject(new Error('Could not set Language. Keywords or ID not found.'));
-                    }
-                } else {
-                    return reject(new Error('Language select dropdown NOT found in DOM! Selector was: ' + langSelectSelector));
-                }
-
-                // Set Source Code
-                const plainTextArea = document.querySelector('textarea#plain-textarea');
-
-                if (typeof window.ace !== 'undefined') {
-                    try {
-                        const editor = window.ace.edit("editor");
-                        editor.setValue(submitData.source_code, -1);
-                    } catch (err) {
-                        console.error('[atcoder-tools-mini] Failed to set Ace Editor value:', err);
-                    }
-                }
-
-                if (plainTextArea) {
-                    plainTextArea.value = submitData.source_code;
-                    plainTextArea.innerHTML = submitData.source_code;
-                    ['input', 'change', 'blur'].forEach(evt => {
-                        plainTextArea.dispatchEvent(new Event(evt, { bubbles: true }));
-                    });
-                } else {
-                    return reject(new Error('plain-textarea not found!'));
-                }
-
-                // Wait for Cloudflare Turnstile if it exists, otherwise submit immediately
-                const submitBtn = document.getElementById('submit') || document.querySelector('button[type="submit"]');
-                if (submitBtn) {
-                    console.log('[atcoder-tools-mini] Checking for Cloudflare Turnstile...');
-
-                    // If the cf-turnstile-response element doesn't exist at all, we might be in a contest where bot protection is off
-                    const turnstileContainer = document.querySelector('[name="cf-turnstile-response"]');
-                    if (!turnstileContainer) {
-                        console.log('[atcoder-tools-mini] Turnstile not detected on page. Clicking submit button immediately!');
-                        submitBtn.click();
-                        resolve();
-                        return;
-                    }
-
-                    console.log('[atcoder-tools-mini] Turnstile detected. Waiting for verification...');
-                    const checkInterval = setInterval(() => {
-                        const cfResponse = document.querySelector('[name="cf-turnstile-response"]');
-                        if (cfResponse && cfResponse.value && cfResponse.value.length > 0) {
-                            console.log('[atcoder-tools-mini] Turnstile Success! Clicking submit button...');
-                            clearInterval(checkInterval);
-                            submitBtn.click();
-                            resolve();
-                        }
-                    }, 500);
-
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        reject(new Error('Turnstile verification timed out after 10 seconds.'));
-                    }, 10000);
-
-                } else {
-                    reject(new Error('Submit button not found!'));
-                }
-            });
-        },
-        args: [data]
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error('Turnstile verification timed out after 10 seconds! (Background tab might be throttled)'));
+        }, 10000);
     });
 
-    console.log('[atcoder-tools-mini] Tab operation completed!');
+    try {
+        // Inject content script into the page context
+        await Promise.race([
+            chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                world: 'MAIN',
+                func: async (submitData) => {
+                    console.log('[atcoder-tools-mini] Interacting with DOM...', submitData);
+                    return new Promise((resolve, reject) => {
+                        // Set Task Screen Name
+                        const selectTask = document.querySelector('select[name="data.TaskScreenName"]');
+                        if (selectTask) {
+                            selectTask.value = submitData.task_screen_name;
+                            selectTask.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+
+                        // Set Language ID
+                        const langSelectSelector = '#select-lang-' + submitData.task_screen_name + ' select';
+                        const selectLang = document.querySelector(langSelectSelector) || document.querySelector('select.form-control[data-placeholder="-"]');
+
+                        if (selectLang) {
+                            let found = false;
+
+                            if (Array.isArray(submitData.language_id)) {
+                                for (const option of selectLang.options) {
+                                    const textMatch = submitData.language_id.every(kw => option.text.toLowerCase().includes(kw.toLowerCase()));
+                                    if (textMatch) {
+                                        console.log('[atcoder-tools-mini] Language matched by keywords: ' + option.text + ' (ID: ' + option.value + ')');
+                                        submitData.language_id = option.value;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                for (const option of selectLang.options) {
+                                    if (option.value === submitData.language_id.toString()) {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!found) {
+                                for (const option of selectLang.options) {
+                                    const optText = option.text.toLowerCase();
+                                    if (optText.includes('c++') && (optText.includes('gcc') || optText.includes('g++'))) {
+                                        submitData.language_id = option.value;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (found) {
+                                selectLang.value = submitData.language_id;
+                                selectLang.dispatchEvent(new Event('change', { bubbles: true }));
+
+                                if (window.jQuery && window.jQuery(selectLang).select2) {
+                                    window.jQuery(selectLang).trigger('change');
+                                }
+                            } else {
+                                return reject(new Error('Could not set Language. Keywords or ID not found.'));
+                            }
+                        } else {
+                            return reject(new Error('Language select dropdown NOT found in DOM! Selector was: ' + langSelectSelector));
+                        }
+
+                        // Set Source Code
+                        const plainTextArea = document.querySelector('textarea#plain-textarea');
+
+                        if (typeof window.ace !== 'undefined') {
+                            try {
+                                const editor = window.ace.edit("editor");
+                                editor.setValue(submitData.source_code, -1);
+                            } catch (err) {
+                                console.error('[atcoder-tools-mini] Failed to set Ace Editor value:', err);
+                            }
+                        }
+
+                        if (plainTextArea) {
+                            plainTextArea.value = submitData.source_code;
+                            plainTextArea.innerHTML = submitData.source_code;
+                            ['input', 'change', 'blur'].forEach(evt => {
+                                plainTextArea.dispatchEvent(new Event(evt, { bubbles: true }));
+                            });
+                        } else {
+                            return reject(new Error('plain-textarea not found!'));
+                        }
+
+                        // Wait for Cloudflare Turnstile if it exists, otherwise submit immediately
+                        const submitBtn = document.getElementById('submit') || document.querySelector('button[type="submit"]');
+                        if (submitBtn) {
+                            console.log('[atcoder-tools-mini] Checking for Cloudflare Turnstile...');
+
+                            // If the cf-turnstile-response element doesn't exist at all, we might be in a contest where bot protection is off
+                            const turnstileContainer = document.querySelector('[name="cf-turnstile-response"]');
+                            if (!turnstileContainer) {
+                                console.log('[atcoder-tools-mini] Turnstile not detected on page. Clicking submit button immediately!');
+                                submitBtn.click();
+                                resolve();
+                                return;
+                            }
+
+                            console.log('[atcoder-tools-mini] Turnstile detected. Waiting for verification...');
+                            const checkInterval = setInterval(() => {
+                                const cfResponse = document.querySelector('[name="cf-turnstile-response"]');
+                                if (cfResponse && cfResponse.value && cfResponse.value.length > 0) {
+                                    console.log('[atcoder-tools-mini] Turnstile Success! Clicking submit button...');
+                                    clearInterval(checkInterval);
+                                    submitBtn.click();
+                                    resolve();
+                                }
+                            }, 500);
+
+                        } else {
+                            reject(new Error('Submit button not found!'));
+                        }
+                    });
+                },
+                args: [data]
+            }),
+            timeoutPromise
+        ]);
+        console.log('[atcoder-tools-mini] Tab operation completed!');
+    } catch (err) {
+        console.log('[atcoder-tools-mini] Error during tab operation. Closing tab.', err);
+        chrome.tabs.remove(tab.id);
+        throw err;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }

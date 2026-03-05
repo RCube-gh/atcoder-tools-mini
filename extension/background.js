@@ -10,7 +10,8 @@ function connectNative() {
             // Execute logic silently in the background!
             submitToAtCoder(msg).catch(err => {
                 console.error('[atcoder-tools-mini] Error during submission:', err);
-                showErrorNotification(`Submission Failed: ${msg.task_screen_name || 'Unknown'}`, err.message || String(err));
+                // We don't show the error notification here anymore, because submitToAtCoder now shows it
+                // with the specific tabId so the user can click it!
             });
         } else if (msg.action === 'gen') {
             console.log('[atcoder-tools-mini] Gen request received:', msg);
@@ -194,7 +195,7 @@ async function generateContestData(data) {
     }
 }
 
-async function showErrorNotification(title, message) {
+async function showErrorNotification(title, message, tabId = null) {
     try {
         const width = 192;
         const height = 192;
@@ -211,13 +212,36 @@ async function showErrorNotification(title, message) {
         const blob = await canvas.convertToBlob({ type: 'image/png' });
         const reader = new FileReader();
         reader.onloadend = () => {
-            chrome.notifications.create({
-                type: 'basic',
-                iconUrl: reader.result,
-                title: title,
-                message: message,
-                priority: 2
-            });
+            chrome.notifications.create(
+                {
+                    type: 'basic',
+                    iconUrl: reader.result,
+                    title: title,
+                    message: message,
+                    priority: 2,
+                    requireInteraction: !!tabId // Keep the notification around if there's a tab to click on!
+                },
+                (notificationId) => {
+                    if (tabId) {
+                        const clickHandler = (id) => {
+                            if (id === notificationId) {
+                                // Focus the stuck tab when the user clicks the notification
+                                chrome.tabs.get(tabId, (tab) => {
+                                    if (chrome.runtime.lastError || !tab) {
+                                        console.log('[atcoder-tools-mini] Tab was closed by user before clicking notification.');
+                                        return;
+                                    }
+                                    chrome.tabs.update(tabId, { active: true });
+                                    chrome.windows.update(tab.windowId, { focused: true });
+                                });
+                                chrome.notifications.clear(id);
+                                chrome.notifications.onClicked.removeListener(clickHandler);
+                            }
+                        };
+                        chrome.notifications.onClicked.addListener(clickHandler);
+                    }
+                }
+            );
         };
         reader.readAsDataURL(blob);
     } catch (err) {
@@ -546,8 +570,13 @@ async function submitToAtCoder(data) {
         ]);
         console.log('[atcoder-tools-mini] Tab operation completed!');
     } catch (err) {
-        console.log('[atcoder-tools-mini] Error during tab operation. Closing tab.', err);
-        chrome.tabs.remove(tab.id);
+        console.log('[atcoder-tools-mini] Error during tab operation. Leaving tab open for manual action.', err);
+        showErrorNotification(`Submission Failed: ${data.task_screen_name || 'Unknown'}`, `${err.message || String(err)}\nClick this notification to open the stuck tab.`, tab.id);
+
+        // Notify the CLI to abort waiting
+        if (port) {
+            port.postMessage({ action: 'submit_error', error: err.message || String(err) });
+        }
         throw err;
     } finally {
         clearTimeout(timeoutId);

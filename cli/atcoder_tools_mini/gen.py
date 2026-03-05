@@ -24,14 +24,44 @@ def gen_contest(args):
             
     contest_dir = os.path.join(cwd, contest_id)
     
+    # Process --open flag logic
+    open_target = None
+    if getattr(args, "open", None) is not None:
+        if args.open == "default":
+            # Attempt to read from config
+            config_path = os.path.expanduser("~/.atm_config.json")
+            config_open = "A" # Fallback default
+            if os.path.isfile(config_path):
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config_data = json.load(f)
+                        if "gen" in config_data and "default_open" in config_data["gen"]:
+                            config_open = config_data["gen"]["default_open"]
+                except Exception:
+                    pass
+            open_target = config_open
+        else:
+            open_target = args.open
+
     if os.path.exists(contest_dir):
-        print(colorize_msg(f"[CLI] Error: Directory '{contest_dir}' already exists."))
-        print(colorize_msg("[CLI] Aborting to prevent overwriting existing files."))
-        sys.exit(1)
+        if open_target:
+            print(colorize_msg(f"[CLI] \033[93mWarning: Directory '{contest_dir}' already exists. Skipping download, but opening '{open_target}' in browser...\033[0m"))
+            payload = {
+                "action": "open_only",
+                "contest_id": contest_id,
+                "open_target": open_target
+            }
+            send_gen_request(payload, cwd=cwd, template_path=None)
+            sys.exit(0)
+        else:
+            print(colorize_msg(f"[CLI] Error: Directory '{contest_dir}' already exists."))
+            print(colorize_msg("[CLI] Aborting to prevent overwriting existing files."))
+            sys.exit(1)
 
     payload = {
         "action": "gen",
-        "contest_id": contest_id
+        "contest_id": contest_id,
+        "open_target": open_target
     }
     
     send_gen_request(payload, cwd=cwd, template_path=args.template)
@@ -104,6 +134,9 @@ def send_gen_request(payload, cwd, template_path):
                     elif msg.get("action") == "gen_result":
                         print(colorize_msg("\n[CLI] Download complete! Building workspace..."))
                         build_workspace(msg, cwd, template_path)
+                        return
+                    elif msg.get("action") == "open_result":
+                        # Handled open_only successfully
                         return
                 except json.JSONDecodeError:
                     pass

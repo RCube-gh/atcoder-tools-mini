@@ -19,6 +19,12 @@ function connectNative() {
                 console.error('[atcoder-tools-mini] Error during gen:', err);
                 port.postMessage({ action: 'gen_error', error: err.message });
             });
+        } else if (msg.action === 'open_only') {
+            console.log('[atcoder-tools-mini] Open-only request received:', msg);
+            openOnlyContestData(msg).catch(err => {
+                console.error('[atcoder-tools-mini] Error during open_only:', err);
+                port.postMessage({ action: 'gen_error', error: err.message });
+            });
         } else if (msg.action === 'get_current_context') {
             console.log('[atcoder-tools-mini] Context request received.');
             chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
@@ -135,7 +141,6 @@ async function generateContestData(data) {
         throw new Error('Tasks table not found. (Not logged in or no tasks? Check Chrome session.)');
     }
 
-    // Extract A, B, C etc. and their URLs
     const rowRegex = /<tr>\s*<td class="text-center(.*?)"><a href="(\/contests\/[^/]+\/tasks\/([^"]+))">([^<]+)<\/a><\/td>/gis;
     const tasks = [];
     let match;
@@ -152,6 +157,26 @@ async function generateContestData(data) {
     }
 
     if (port) port.postMessage({ action: 'gen_log', message: `Found ${tasks.length} tasks: ${tasks.map(t => t.label).join(', ')}` });
+
+    // Handle --open flag
+    if (data.open_target) {
+        let urlToOpen = null;
+        if (data.open_target.toLowerCase() === 'tasks') {
+            urlToOpen = tasksUrl;
+        } else {
+            const tgtTask = tasks.find(t => t.label.toUpperCase() === data.open_target.toUpperCase());
+            if (tgtTask) {
+                urlToOpen = tgtTask.url;
+            }
+        }
+
+        if (urlToOpen) {
+            console.log(`[atcoder-tools-mini] Opening target URL for ${data.open_target}: ${urlToOpen}`);
+            chrome.tabs.create({ url: urlToOpen, active: true });
+        } else {
+            if (port) port.postMessage({ action: 'gen_log', message: `Warning: Task '${data.open_target}' not found. Cannot open browser tab.` });
+        }
+    }
 
     const results = [];
 
@@ -192,6 +217,65 @@ async function generateContestData(data) {
             contest_id: contestId,
             tasks: results
         });
+    }
+}
+
+async function openOnlyContestData(data) {
+    const contestId = data.contest_id;
+    if (!contestId) {
+        throw new Error('contest_id is missing for open_only command.');
+    }
+
+    if (port) port.postMessage({ action: 'gen_log', message: `Fetching task URLs for ${contestId}...` });
+
+    const tasksUrl = `https://atcoder.jp/contests/${contestId}/tasks`;
+    const response = await fetch(tasksUrl);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch tasks page: ${response.status}`);
+    }
+    const html = await response.text();
+
+    const tbodyMatch = html.match(/<tbody>(.*?)<\/tbody>/is);
+    if (!tbodyMatch) {
+        throw new Error('Tasks table not found. (Not logged in or no tasks? Check Chrome session.)');
+    }
+
+    const rowRegex = /<tr>\s*<td class="text-center(.*?)"><a href="(\/contests\/[^/]+\/tasks\/([^"]+))">([^<]+)<\/a><\/td>/gis;
+    const tasks = [];
+    let match;
+    while ((match = rowRegex.exec(tbodyMatch[1])) !== null) {
+        tasks.push({
+            label: match[4].trim(), // "A", "B", ...
+            url: `https://atcoder.jp${match[2]}`
+        });
+    }
+
+    if (tasks.length === 0) {
+        throw new Error('No tasks found in the table.');
+    }
+
+    // Handle --open flag
+    if (data.open_target) {
+        let urlToOpen = null;
+        if (data.open_target.toLowerCase() === 'tasks') {
+            urlToOpen = tasksUrl;
+        } else {
+            const tgtTask = tasks.find(t => t.label.toUpperCase() === data.open_target.toUpperCase());
+            if (tgtTask) {
+                urlToOpen = tgtTask.url;
+            }
+        }
+
+        if (urlToOpen) {
+            console.log(`[atcoder-tools-mini] Opening target URL for ${data.open_target}: ${urlToOpen}`);
+            chrome.tabs.create({ url: urlToOpen, active: true });
+        } else {
+            throw new Error(`Task '${data.open_target}' not found. Cannot open browser tab.`);
+        }
+    }
+
+    if (port) {
+        port.postMessage({ action: 'open_result' });
     }
 }
 

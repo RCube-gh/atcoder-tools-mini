@@ -54,6 +54,10 @@ atm gen <contest_id>
 - **What it does**: Scrapes AtCoder, creates a folder for the contest (e.g., `abc300/A`, `abc300/B`), downloads `in_*.txt` & `out_*.txt` sample files, and generates a code file (e.g., `main.cpp` or `main.py`) using your template.
 - **Safety**: If the directory already exists, it will safely abort to prevent overwriting your hard work.
 - **Custom Template**: You can temporarily specify a template via `atm gen abc300 -t /path/to/template.cpp`.
+- **Auto-Open Browser (`--open`)**: Automatically open the problem page in your browser immediately after generating the workspace (or if the workspace already exists)!
+  - `atm gen abc300 --open A`: Opens the A problem page.
+  - `atm gen abc300 --open tasks`: Opens the task list page.
+  - `atm gen abc300 --open`: Uses the `default_open` value from your `.atm_config.json` (defaults to `A`).
 
 ### 2. Local Testing (`atm test`)
 Test your code quickly against the downloaded sample cases.
@@ -96,6 +100,9 @@ You can deeply customize `atm` by creating a `.atm_config.json` file in your hom
 {
     "lang": "python",
     "template_path": "~/my_atcoder_template.py",
+    "gen": {
+        "default_open": "A"
+    },
     "test_commands": {
         "python": {
             "run": "python3 {src}"

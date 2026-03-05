@@ -20,6 +20,7 @@ def main():
     gen_parser = subparsers.add_parser("gen", help="Generate contest workspace and download test cases")
     gen_parser.add_argument("contest_id", nargs="?", default=None, help="Contest ID (e.g., abc443). If omitted, inferred from active browser tab.")
     gen_parser.add_argument("--template", "-t", help="Path to custom template file")
+    gen_parser.add_argument("--open", nargs="?", const="default", default=None, help="Open a specific problem (e.g., A, B, tasks) in browser. If used without value, uses default_open from .atm_config.json (or 'A').")
     
     # 'test' command
     test_parser = subparsers.add_parser("test", help="Test source code against sample cases")

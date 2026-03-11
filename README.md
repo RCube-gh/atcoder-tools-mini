@@ -1,6 +1,6 @@
 # atcoder-tools-mini (atm)
 
-`atcoder-tools-mini` (abbreviated as `atm`) is a lightweight, blazing-fast, and highly customizable CLI tool designed to completely automate your AtCoder workflow.
+`atcoder-tools-mini` (abbreviated as `atm`) is a CLI tool designed to automate your AtCoder workflow.
 
 It serves as a deeply modernized and self-contained alternative to the original `atcoder-tools`. By pairing with a dedicated Chrome Extension, it leverages your browser's existing authenticated session to seamlessly interact with AtCoder, maintaining a completely local, frictionless CLI experience.
 
@@ -54,7 +54,7 @@ atm gen <contest_id>
 - **What it does**: Scrapes AtCoder, creates a folder for the contest (e.g., `abc300/A`, `abc300/B`), downloads `in_*.txt` & `out_*.txt` sample files, and generates a code file (e.g., `main.cpp` or `main.py`) using your template.
 - **Safety**: If the directory already exists, it will safely abort to prevent overwriting your hard work.
 - **Custom Template**: You can temporarily specify a template via `atm gen abc300 -t /path/to/template.cpp`.
-- **Auto-Open Browser (`--open`)**: Automatically open the problem page in your browser immediately after generating the workspace (or if the workspace already exists)!
+- **Auto-Open Page (`--open`)**: Automatically open the problem page in your browser immediately after generating the workspace (or if the workspace already exists)!
   - `atm gen abc300 --open A`: Opens the A problem page.
   - `atm gen abc300 --open tasks`: Opens the task list page.
   - `atm gen abc300 --open`: Uses the `default_open` value from your `.atm_config.json` (defaults to `A`).

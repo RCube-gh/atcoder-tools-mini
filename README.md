@@ -4,18 +4,18 @@
 
 It serves as a deeply modernized and self-contained alternative to the original `atcoder-tools`. By pairing with a dedicated Chrome Extension, it leverages your browser's existing authenticated session to seamlessly interact with AtCoder, maintaining a completely local, frictionless CLI experience.
 
-## ✨ Key Features
+## Key Features
 
-- **⚡ Auto Generation (`gen`)**: Instantly creates a workspace with problem directories, downloads sample test cases, and injects your favorite code template.
-- **🧪 Robust Local Testing (`test`)**: Compiles and tests your code against sample cases locally. Intelligently ignores trailing whitespaces and empty lines to prevent frustrating and unreasonable WAs.
-- **🚀 One-Command Submission (`ts` / `submit`)**: Submit directly from the CLI. The tool automatically infers the contest, task, and language context. Track real-time judging status right in your terminal!
-- **⚙️ Deep Customization**: Supports multiple programming languages natively and allows infinite customization of compilation/execution commands via `~/.atm_config.json`.
-- **🎯 Tab-Sync Fallback**: Effortlessly test and submit from *any* directory. If your CLI lacks context or test cases, `atm` magically infers the contest and problem ID directly from your active browser tab, extracting and running sample cases in a temporary room on the fly!
-- **🔗 Browser Integration (Cloudflare Bypass)**: Uses a Chrome Extension with Native Messaging to securely download contest cases and submit code using your active browser session. This ensures stable and reliable communication with AtCoder directly from your terminal, elegantly bypassing Cloudflare 403 blocks!
+-  Auto Generation (`gen`)**: Instantly creates a workspace with problem directories, downloads sample test cases, and injects your favorite code template.
+-  Robust Local Testing (`test`)**: Compiles and tests your code against sample cases locally. Intelligently ignores trailing whitespaces and empty lines to prevent frustrating and unreasonable WAs.
+-  One-Command Submission (`ts` / `submit`)**: Submit directly from the CLI. The tool automatically infers the contest, task, and language context. Track real-time judging status right in your terminal!
+-  Deep Customization**: Supports multiple programming languages natively and allows infinite customization of compilation/execution commands via `~/.atm_config.json`.
+-  Tab-Sync Fallback**: Effortlessly test and submit from *any* directory. If your CLI lacks context or test cases, `atm` magically infers the contest and problem ID directly from your active browser tab, extracting and running sample cases in a temporary room on the fly!
+-  Browser Integration (Cloudflare Bypass)**: Uses a Chrome Extension with Native Messaging to securely download contest cases and submit code using your active browser session. This ensures stable and reliable communication with AtCoder directly from your terminal, elegantly bypassing Cloudflare 403 blocks!
 
 ---
 
-## 📦 Installation
+## Installation
 
 To use `atm`, you need to set up both the CLI tool and the accompanying Chrome Extension.
 
@@ -41,7 +41,7 @@ python install_native.py
 
 ---
 
-## 🛠️ Usage
+## Usage
 
 ### 1. Generate Workspace (`atm gen`)
 Run this the moment a contest starts to download all test cases and prepare your environment.
@@ -91,7 +91,7 @@ atm submit
 
 ---
 
-## ⚙️ Configuration (`~/.atm_config.json`)
+## Configuration (`~/.atm_config.json`)
 
 You can deeply customize `atm` by creating a `.atm_config.json` file in your home directory (`~/.atm_config.json`). This allows you to set your default language, template, and even override compilation commands.
 
